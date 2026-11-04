@@ -31,6 +31,8 @@ Keystone project only from their own words, and a chair sums up. Design rules th
 
 ## Architecture
 
+![Architecture overview: offline indexing, the online question flow, the jury and the knowledge base](docs/architecture.png)
+
 ```
  Keystone (Project › Jury)        demo page (public/)
           │  text, voice, project facts  │
