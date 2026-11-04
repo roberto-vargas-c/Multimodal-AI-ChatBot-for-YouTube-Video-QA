@@ -1,11 +1,10 @@
-import type { Ai, D1Database, VectorizeIndex, Fetcher } from "@cloudflare/workers-types";
+import type { Ai, D1Database, VectorizeIndex } from "@cloudflare/workers-types";
 
 export interface Env {
   AI: Ai;
   VECTORIZE: VectorizeIndex;
   VECTORIZE_PRIVATE?: VectorizeIndex;   // owner-only index (copyrighted books): only queried for owner requests
   DB: D1Database;
-  ASSETS: Fetcher;
   ANTHROPIC_API_KEY: string;
   CHAT_MODEL?: string;             // default claude-haiku-5-5
   EMBEDDING_MODEL?: string;        // default @cf/baai/bge-m3 (multilingual, 1024 dimensions)

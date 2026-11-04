@@ -10,9 +10,9 @@ Keystone project only from their own words, and a chair sums up. Design rules th
 
 | | |
 |---|---|
-| **Live** | `https://keystone-jury.<subdomain>.workers.dev` (demo page), and **Project › Jury** in Keystone |
+| **Live** | Inside Keystone: **Project › Jury**. Keystone passes the panel's requests to this Worker, which has no page of its own |
 | **Stack** | LangChain.js + LangGraph.js · Claude Haiku 5.5 · Cloudflare Workers, Vectorize, Workers AI (Whisper, bge-m3), D1 · LangSmith |
-| **Code** | `src/` the Worker · `ingest/` the library builder · `eval/` the LangSmith evaluation · `public/` the demo page · `tests/` |
+| **Code** | `src/` the Worker · `ingest/` the library builder · `eval/` the LangSmith evaluation · `tests/` |
 
 ## How the brief maps onto it
 
@@ -20,13 +20,13 @@ Keystone project only from their own words, and a chair sums up. Design rules th
 |---|---|
 | 1. Text QA with pre-trained language models | Claude Haiku 5.5 answers from retrieved passages only, citing each one (`src/agent.ts`) |
 | 2. Speech recognition | Whisper large-v3-turbo on Workers AI: spoken questions and pitches (`/api/transcribe`), and videos without captions at ingestion |
-| 3. Conversational interface, text or voice | The demo page and Keystone's Jury panel, both with a microphone button; one memory per conversation |
+| 3. Conversational interface, text or voice | Keystone's Jury panel, with a microphone button; one memory per conversation |
 | 4. YouTube content into a vector database | Captions (or Whisper) → cleaned → 60 s windows with 15 s overlap → bge-m3 embeddings → Cloudflare Vectorize, with author, kind, building type, country |
 | 5. Testing and evaluation | 19 unit tests (`npm test`) and a LangSmith evaluation of the live app: correctness (LLM judge), retrieval hit, citations, refusals, latency (`eval/run.ts`), on questions it writes itself from the library (`eval/generate.ts`) |
 | 6. Agents with several tools and memory | A LangChain agent with 6 tools and D1-backed memory; a LangGraph jury of N jurors and a chair; a router between them |
 | LangChain: preprocessing, agents, routing, retrieval | `src/chunk.ts`, `src/agent.ts`, `src/router.ts`, `src/store.ts` (`@langchain/cloudflare` Vectorize store and embeddings) |
 | LangSmith | Every request is traced (`LANGSMITH_TRACING`); the evaluation runs as LangSmith experiments to compare settings |
-| Deployed as a web app | One Cloudflare Worker serves the API and the demo page; Keystone (also on Cloudflare) calls it |
+| Deployed as a web app | One Cloudflare Worker serves the API; Keystone (also on Cloudflare) passes the panel's requests to it, so users only see Keystone |
 | Other sources than YouTube | Books (PDF) by page, the same way |
 
 ## Architecture
@@ -34,9 +34,9 @@ Keystone project only from their own words, and a chair sums up. Design rules th
 ![Architecture overview: offline indexing, the online question flow, the jury and the knowledge base](docs/architecture.png)
 
 ```
- Keystone (Project › Jury)        demo page (public/)
-          │  text, voice, project facts  │
-          ▼                              ▼
+ Keystone › Project › Jury  (the browser talks to Keystone's /api/jury/…, Keystone to this Worker)
+          │  text, voice, project facts
+          ▼
  ┌──────────────────── keystone-jury Worker ─────────────────────┐
  │ /api/transcribe ── Workers AI Whisper                          │
  │ /api/chat ── router ──┬─► Q&A agent (createAgent, 6 tools) ────┼─► Claude Haiku 5.5
@@ -102,7 +102,7 @@ cp ingest/library.example.json ingest/library.json && npm run ingest:library    
 **Private books.** A copyrighted book goes in with `--private` (or `"private": true` in `library.json`). It is stored in a second
 Vectorize index, `keystone-jury-private`, and marked private in D1. The public endpoints never query it, and `/api/sources` and
 `/api/authors` leave it out. A request with `Authorization: Bearer <OWNER_TOKEN>` (or the `INGEST_TOKEN`) searches both indexes,
-for asking and for the jury. On the demo page, open it once as `…/#owner=<OWNER_TOKEN>`. Facts proposed from a private book keep
+for asking and for the jury. In Keystone, curators get it automatically when `KEYSTONE_JURY_OWNER_TOKEN` is set there. Facts proposed from a private book keep
 its title and page as evidence but not its text, and an owner's chat history is stored apart from public sessions.
 
 A video without captions: `yt-dlp -x --audio-format mp3 <url>`, then add `--audio file.mp3` (Whisper through the Workers AI REST

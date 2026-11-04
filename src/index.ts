@@ -1,4 +1,4 @@
-// The Worker: the HTTP API for the Keystone panel and the demo page in public/.
+// The Worker: the HTTP API behind Keystone's Project › Jury. It has no page of its own: Keystone passes its panel's requests here.
 import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
 import type { ExecutionContext } from "@cloudflare/workers-types";
 import { ask } from "./agent";
@@ -16,7 +16,8 @@ type Json = Record<string, unknown>;
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request as never) as unknown as Response;
+    // the jury lives inside Keystone: anyone opening this address is sent to the panel there
+    if (!url.pathname.startsWith("/api/")) return Response.redirect(`${(env.KEYSTONE_URL ?? "https://keystone.robert-en-var.workers.dev").replace(/\/$/, "")}/app#/project/jury`, 302);
     const cors = corsHeaders(request, env);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
     try {
