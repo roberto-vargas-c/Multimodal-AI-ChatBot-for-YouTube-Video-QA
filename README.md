@@ -101,7 +101,7 @@ API, with `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`).
 
 **Evaluate.** `npm run eval:generate` writes the test questions itself: it reads passages spread over every video and book,
 has Claude write a question and reference answer for each (the passage is the reference source), and adds questions the library
-cannot answer. Read `eval/dataset.jsonl` once and delete any weak ones, then `npm run eval -- --dataset keystone-jury-qa-1 --name baseline`.
+cannot answer. Then run `npm run eval -- --dataset keystone-jury-qa-1 --name baseline`.
 Hand-written questions in the same format (`eval/dataset.example.jsonl`) can be added. Each run is a LangSmith experiment with five scores per question:
 `correctness` (Claude as judge), `retrieval_hit` (a citation from the right video within ±30 s, or the right page), `cites_sources` /
 `declined_unanswerable`, `searched`, and `latency_s`.
