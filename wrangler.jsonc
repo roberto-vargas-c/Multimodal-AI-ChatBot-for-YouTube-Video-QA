@@ -1,0 +1,23 @@
+{
+  // Keystone jury: the Worker, its demo page, and the Cloudflare services it uses. See README for the one-time setup.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "keystone-jury",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  // LangChain.js needs node:async_hooks; with a date after 2025-04-01 process.env also holds the vars and secrets (LangSmith reads it)
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": "./public", "binding": "ASSETS" },
+  "ai": { "binding": "AI" },
+  "vectorize": [{ "binding": "VECTORIZE", "index_name": "keystone-jury" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "keystone-jury", "database_id": "REPLACE_WITH_ID_FROM_wrangler_d1_create", "migrations_dir": "migrations" }],
+  "observability": { "enabled": true },
+  "vars": {
+    "CHAT_MODEL": "claude-haiku-5-5",
+    "AI_PER_DAY": "300",
+    "ALLOWED_ORIGINS": "https://keystone.robert-en-var.workers.dev,http://localhost:5000",
+    "KEYSTONE_URL": "https://keystone.robert-en-var.workers.dev",
+    "LANGSMITH_TRACING": "true",
+    "LANGSMITH_PROJECT": "keystone-jury"
+  }
+  // secrets (npx wrangler secret put …): ANTHROPIC_API_KEY, LANGSMITH_API_KEY, INGEST_TOKEN, KEYSTONE_BOT_TOKEN (optional)
+}

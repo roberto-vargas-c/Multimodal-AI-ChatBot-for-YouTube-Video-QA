@@ -1,0 +1,123 @@
+// The Worker: the HTTP API for the Keystone panel and the demo page in public/.
+import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
+import type { ExecutionContext } from "@cloudflare/workers-types";
+import { ask } from "./agent";
+import { jury } from "./jury";
+import { route } from "./router";
+import { transcribe } from "./speech";
+import { allow } from "./llm";
+import { ingest, sources, authors } from "./store";
+import { forKeystone } from "./facts";
+import { chunkPages, chunkTranscript, type Chunk, type Page, type Segment } from "./chunk";
+import type { Env, ProjectSummary, Source } from "./types";
+
+type Json = Record<string, unknown>;
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith("/api/")) return env.ASSETS.fetch(request as never) as unknown as Response;
+    const cors = corsHeaders(request, env);
+    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    try {
+      const res = await handle(request, url, env);
+      for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
+      return res;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      console.error(message);
+      return json({ error: message }, e instanceof HttpError ? e.status : 500, cors);
+    } finally {
+      ctx.waitUntil(awaitAllCallbacks());       // let the LangSmith traces finish after the response
+    }
+  },
+};
+
+async function handle(request: Request, url: URL, env: Env): Promise<Response> {
+  const path = url.pathname, method = request.method;
+
+  if (path === "/api/health") return json({ ok: true, model: env.CHAT_MODEL ?? "claude-haiku-5-5", tracing: env.LANGSMITH_TRACING === "true" });
+  if (path === "/api/sources" && method === "GET") return json({ sources: await sources(env) });
+  if (path === "/api/authors" && method === "GET") return json({ authors: await authors(env) });
+  if (path === "/api/facts" && method === "GET") return json(await forKeystone(env));
+
+  if (path === "/api/transcribe" && method === "POST") {
+    const audio = await request.arrayBuffer();
+    return json(await transcribe(env, audio, url.searchParams.get("lang") ?? undefined));
+  }
+
+  if (path === "/api/ask" && method === "POST") {
+    const b = await body(request);
+    await budget(env);
+    return json({ route: "ask", ...(await ask(env, askInput(b))) });
+  }
+
+  if (path === "/api/jury" && method === "POST") {
+    const b = await body(request);
+    const jurors = Array.isArray(b.jurors) ? (b.jurors as unknown[]).map(String).filter(Boolean).slice(0, 5) : [];
+    if (jurors.length === 0) throw new HttpError(400, "Pick at least one juror (an author from /api/authors)");
+    await budget(env, jurors.length + 1);
+    return json({ route: "jury", ...(await jury(env, { jurors, project: (b.project ?? {}) as ProjectSummary, pitch: str(b.pitch), lang: str(b.lang) })) });
+  }
+
+  // one door for the panel: text or a transcript of speech, sent to the agent or to the jury
+  if (path === "/api/chat" && method === "POST") {
+    const b = await body(request);
+    const message = str(b.message) ?? "";
+    const mode = (str(b.mode) ?? "auto") as "auto" | "ask" | "jury";
+    await budget(env);
+    const r = mode === "auto" ? await route(env, message) : mode;
+    if (r === "jury" && Array.isArray(b.jurors) && b.jurors.length) {
+      await budget(env, b.jurors.length + 1);
+      return json({ route: "jury", ...(await jury(env, { jurors: (b.jurors as unknown[]).map(String).slice(0, 5),
+        project: (b.project ?? {}) as ProjectSummary, pitch: message, lang: str(b.lang) })) });
+    }
+    return json({ route: "ask", ...(await ask(env, askInput(b))) });
+  }
+
+  // ingestion: the CLI in ingest/ sends a source with its transcript segments or book pages, or chunks it made itself
+  if (path === "/api/ingest" && method === "POST") {
+    if (!env.INGEST_TOKEN || request.headers.get("authorization") !== `Bearer ${env.INGEST_TOKEN}`) throw new HttpError(401, "Not allowed");
+    const b = await body(request);
+    const source = b.source as Source;
+    if (!source?.id || !source.title || !source.author || !["video", "book"].includes(source.kind)) throw new HttpError(400, "source needs id, kind, title, author");
+    const chunks: Chunk[] = Array.isArray(b.chunks) ? (b.chunks as Chunk[])
+      : Array.isArray(b.segments) ? chunkTranscript(b.segments as Segment[])
+      : Array.isArray(b.pages) ? chunkPages(b.pages as Page[]) : [];
+    if (chunks.length === 0) throw new HttpError(400, "Nothing to ingest: send chunks, segments or pages");
+    return json({ source: source.id, chunks: await ingest(env, source, chunks) });
+  }
+
+  throw new HttpError(404, "Not found");
+}
+
+function askInput(b: Json) {
+  const message = str(b.message);
+  if (!message) throw new HttpError(400, "message is required");
+  return { sessionId: str(b.sessionId) ?? crypto.randomUUID(), message, project: b.project as ProjectSummary | undefined,
+    lang: str(b.lang), allowWrites: b.allowWrites !== false };
+}
+
+async function budget(env: Env, calls = 1) {
+  if (!(await allow(env, calls))) throw new HttpError(429, "The assistant has reached today's limit. Please try again tomorrow.");
+}
+
+class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
+
+const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+
+async function body(request: Request): Promise<Json> {
+  try { return (await request.json()) as Json; } catch { throw new HttpError(400, "Send JSON"); }
+}
+
+function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8", ...headers } });
+}
+
+function corsHeaders(request: Request, env: Env): Record<string, string> {
+  const origin = request.headers.get("origin") ?? "";
+  const allowed = (env.ALLOWED_ORIGINS ?? "").split(",").map(s => s.trim()).filter(Boolean);
+  const ok = allowed.includes("*") || allowed.includes(origin);
+  return ok && origin ? { "access-control-allow-origin": origin, "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "content-type, authorization", "vary": "origin" } : {};
+}

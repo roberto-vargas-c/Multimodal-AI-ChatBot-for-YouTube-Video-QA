@@ -1,0 +1,307 @@
+{
+ "categories": [
+  {
+   "id": "site",
+   "en": "Site placement",
+   "questions": [
+    {
+     "id": "layout",
+     "en": "How are the buildings arranged on the site?"
+    },
+    {
+     "id": "entrance",
+     "en": "Where is the main entrance and what does it face?"
+    },
+    {
+     "id": "open-space",
+     "en": "How much open space, and where?"
+    },
+    {
+     "id": "existing",
+     "en": "Are existing buildings kept or extended?"
+    },
+    {
+     "id": "parking",
+     "en": "Where does parking go?"
+    }
+   ]
+  },
+  {
+   "id": "form",
+   "en": "Building form",
+   "questions": [
+    {
+     "id": "depth",
+     "en": "How deep are the wings?"
+    },
+    {
+     "id": "storeys",
+     "en": "How many storeys?"
+    },
+    {
+     "id": "ground-height",
+     "en": "How high is the ground floor?"
+    },
+    {
+     "id": "floor-height",
+     "en": "How high are the upper floors?"
+    },
+    {
+     "id": "type",
+     "en": "Which building type (block, courtyard, podium and towers)?"
+    },
+    {
+     "id": "roof",
+     "en": "Which roof form?"
+    }
+   ]
+  },
+  {
+   "id": "programme",
+   "en": "Programme",
+   "questions": [
+    {
+     "id": "stacking",
+     "en": "Which uses go on which floors?"
+    },
+    {
+     "id": "corridor",
+     "en": "How wide are the corridors?"
+    },
+    {
+     "id": "cores",
+     "en": "How many cores, and how far apart?"
+    },
+    {
+     "id": "area-factor",
+     "en": "Gross to net area factor?"
+    },
+    {
+     "id": "rooms",
+     "en": "How big are the main rooms?"
+    }
+   ]
+  },
+  {
+   "id": "facade",
+   "en": "Facade",
+   "questions": [
+    {
+     "id": "module",
+     "en": "Which facade module?"
+    },
+    {
+     "id": "window",
+     "en": "What window share?"
+    },
+    {
+     "id": "ground",
+     "en": "How is the ground floor treated?"
+    },
+    {
+     "id": "material",
+     "en": "Which facade material?"
+    },
+    {
+     "id": "plinth",
+     "en": "Is there a base or a different top?"
+    }
+   ]
+  },
+  {
+   "id": "structure",
+   "en": "Structure",
+   "questions": [
+    {
+     "id": "system",
+     "en": "Which structural system?"
+    },
+    {
+     "id": "grid",
+     "en": "Which column grid?"
+    },
+    {
+     "id": "slab",
+     "en": "Which slab and span?"
+    }
+   ]
+  },
+  {
+   "id": "materials",
+   "en": "Materials",
+   "questions": [
+    {
+     "id": "palette",
+     "en": "Which material and colour palette?"
+    },
+    {
+     "id": "roof",
+     "en": "What is on the roof?"
+    },
+    {
+     "id": "paving",
+     "en": "Which outdoor paving?"
+    }
+   ]
+  },
+  {
+   "id": "landscape",
+   "en": "Landscape",
+   "questions": [
+    {
+     "id": "trees",
+     "en": "How are trees placed?"
+    },
+    {
+     "id": "surfaces",
+     "en": "Which surfaces and planting?"
+    },
+    {
+     "id": "water",
+     "en": "Is there water, and where?"
+    }
+   ]
+  },
+  {
+   "id": "drawings",
+   "en": "Drawings",
+   "questions": [
+    {
+     "id": "standard",
+     "en": "Which drawing standard?"
+    },
+    {
+     "id": "typical-floors",
+     "en": "How are repeated floors drawn?"
+    },
+    {
+     "id": "reduced-scale",
+     "en": "How do plans read at board scale?"
+    },
+    {
+     "id": "section",
+     "en": "What do sections and elevations show?"
+    }
+   ]
+  },
+  {
+   "id": "boards",
+   "en": "Boards",
+   "questions": [
+    {
+     "id": "format",
+     "en": "Which sheet format?"
+    },
+    {
+     "id": "count",
+     "en": "How many sheets?"
+    },
+    {
+     "id": "sequence",
+     "en": "In what order do the sheets run?"
+    },
+    {
+     "id": "siteplan",
+     "en": "How does the site plan look?"
+    },
+    {
+     "id": "code",
+     "en": "How is the entry kept anonymous?"
+    }
+   ]
+  },
+  {
+   "id": "perspectives",
+   "en": "Perspectives",
+   "questions": [
+    {
+     "id": "light",
+     "en": "Which light and weather?"
+    },
+    {
+     "id": "viewpoint",
+     "en": "From where is the view taken?"
+    },
+    {
+     "id": "life",
+     "en": "Who and what is in the picture?"
+    },
+    {
+     "id": "register",
+     "en": "Rendering or hand-drawn collage?"
+    },
+    {
+     "id": "model",
+     "en": "Is a model photo used?"
+    }
+   ]
+  },
+  {
+   "id": "cost",
+   "en": "Cost",
+   "questions": [
+    {
+     "id": "rate",
+     "en": "Cost per m\u00b2 of floor area?"
+    },
+    {
+     "id": "location",
+     "en": "How does the location change it?"
+    }
+   ]
+  },
+  {
+   "id": "regulations",
+   "en": "Regulations",
+   "questions": [
+    {
+     "id": "classes",
+     "en": "Which building class and height limits?"
+    },
+    {
+     "id": "escape",
+     "en": "How far to an escape route?"
+    },
+    {
+     "id": "second-route",
+     "en": "Is the second escape route built or by ladder?"
+    },
+    {
+     "id": "accessibility",
+     "en": "Accessibility requirements?"
+    },
+    {
+     "id": "summer",
+     "en": "Summer heat protection?"
+    },
+    {
+     "id": "parking",
+     "en": "Parking dimensions?"
+    }
+   ]
+  }
+ ],
+ "typologies": [
+  "hospital",
+  "lab",
+  "office",
+  "school"
+ ],
+ "countries": [
+  "DE",
+  "AT",
+  "CH",
+  "CR",
+  "FR",
+  "GB",
+  "NL",
+  "BE",
+  "DK",
+  "SE",
+  "FI",
+  "NO",
+  "ES",
+  "IT",
+  "*"
+ ]
+}

@@ -1,0 +1,47 @@
+{
+  "name": "keystone-jury",
+  "version": "0.1.0",
+  "description": "Keystone jury: a multimodal RAG assistant over architecture videos and books, with a jury of authors that judges your design. LangChain.js on Cloudflare Workers.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply keystone-jury --remote",
+    "db:migrate:local": "wrangler d1 migrations apply keystone-jury --local",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "ingest:youtube": "tsx ingest/youtube.ts",
+    "ingest:book": "tsx ingest/book.ts",
+    "ingest:library": "tsx ingest/library.ts",
+    "eval": "tsx eval/run.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/roberto-vargas-c/multimodal-ai-chatbot-for-youtube-video-qa.git"
+  },
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/roberto-vargas-c/multimodal-ai-chatbot-for-youtube-video-qa/issues"
+  },
+  "homepage": "https://github.com/roberto-vargas-c/multimodal-ai-chatbot-for-youtube-video-qa#readme",
+  "dependencies": {
+    "@langchain/anthropic": "^1.6.0",
+    "@langchain/cloudflare": "^1.1.0",
+    "@langchain/core": "^1.3.4",
+    "@langchain/langgraph": "^1.6.1",
+    "langchain": "^1.6.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261104.1",
+    "@types/node": "^26.6.6",
+    "langsmith": "^0.11.8",
+    "pdfjs-dist": "^6.5.438",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0",
+    "wrangler": "^4.157.0",
+    "youtube-transcript": "^1.3.1"
+  },
+  "private": true,
+  "type": "module"
+}

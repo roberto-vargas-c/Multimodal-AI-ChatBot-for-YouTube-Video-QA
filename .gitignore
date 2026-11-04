@@ -1,0 +1,8 @@
+node_modules/
+.wrangler/
+.dev.vars
+.env
+ingest/library.json
+ingest/audio/
+books/
+eval/results/

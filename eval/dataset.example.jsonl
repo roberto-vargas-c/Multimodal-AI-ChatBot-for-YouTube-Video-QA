@@ -1,0 +1,3 @@
+{"question": "What does the lecturer say about the depth of hospital wards?", "answer": "Write the reference answer here, from the video.", "sources": [{"id": "VIDEO_ID", "start": 754, "end": 820}]}
+{"question": "Welche Rolle spielt der Innenhof laut dem Buch?", "answer": "Reference answer from the book.", "sources": [{"id": "book-slug", "page": 56}], "lang": "de"}
+{"question": "What is the capital of Australia?", "unanswerable": true}

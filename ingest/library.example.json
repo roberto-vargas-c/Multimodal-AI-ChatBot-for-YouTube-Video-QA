@@ -1,0 +1,9 @@
+{
+  "_comment": "Copy to library.json and list what goes into the index; npx tsx ingest/library.ts library.json ingests all of it.",
+  "videos": [
+    { "url": "https://www.youtube.com/watch?v=VIDEO_ID", "author": "Lecturer's name", "lang": "en", "country": "*", "typology": "*" }
+  ],
+  "books": [
+    { "pdf": "books/your-book.pdf", "author": "Author's name", "title": "Title", "year": 2020, "lang": "de", "country": "DE", "typology": "*" }
+  ]
+}

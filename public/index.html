@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keystone jury</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header>
+  <h1>Keystone jury</h1>
+  <p class="lead">Ask what architects say in lectures, jury sessions and books, or let a jury of authors judge your design.</p>
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-tab="ask">Ask</button>
+    <button role="tab" aria-selected="false" data-tab="jury">Jury</button>
+    <button role="tab" aria-selected="false" data-tab="library">Library</button>
+  </nav>
+</header>
+
+<main>
+  <section id="ask" class="tab">
+    <ol id="log" aria-live="polite"></ol>
+    <form id="ask-form">
+      <textarea id="question" rows="2" placeholder="How deep should a hospital ward be? Wie tief ist ein Klassenzimmer?" required></textarea>
+      <div class="row">
+        <button type="button" class="mic" id="mic" aria-label="Speak your question">Speak</button>
+        <button type="submit">Ask</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="jury" class="tab" hidden>
+    <fieldset>
+      <legend>Jurors (up to 3)</legend>
+      <div id="jurors" class="chips"><span class="muted">Loading the authors…</span></div>
+    </fieldset>
+    <label>Project, as Keystone sends it
+      <textarea id="project" rows="10" spellcheck="false"></textarea>
+    </label>
+    <label>Your pitch (optional, or speak it)
+      <textarea id="pitch" rows="3" placeholder="Learning clusters around a green court, brick with deep reveals…"></textarea>
+    </label>
+    <div class="row">
+      <button type="button" class="mic" id="mic-pitch" aria-label="Speak your pitch">Speak</button>
+      <button id="run-jury" type="button">Ask the jury</button>
+    </div>
+    <p class="note">A simulation grounded in each author's published words, not their actual opinion.</p>
+    <div id="verdicts"></div>
+  </section>
+
+  <section id="library" class="tab" hidden>
+    <table><thead><tr><th>Author</th><th>Title</th><th>Kind</th><th>Chunks</th></tr></thead><tbody id="sources"></tbody></table>
+  </section>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
