@@ -37,8 +37,9 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
   const path = url.pathname, method = request.method;
 
   if (path === "/api/health") return json({ ok: true, model: env.CHAT_MODEL ?? "claude-haiku-5-5", tracing: env.LANGSMITH_TRACING === "true" });
-  if (path === "/api/sources" && method === "GET") return json({ sources: await sources(env) });
-  if (path === "/api/authors" && method === "GET") return json({ authors: await authors(env) });
+  const owner = isOwner(request, env);
+  if (path === "/api/sources" && method === "GET") return json({ sources: await sources(env, owner) });
+  if (path === "/api/authors" && method === "GET") return json({ authors: await authors(env, owner) });
   if (path === "/api/facts" && method === "GET") return json(await forKeystone(env));
 
   if (path === "/api/transcribe" && method === "POST") {
@@ -49,7 +50,7 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
   if (path === "/api/ask" && method === "POST") {
     const b = await body(request);
     await budget(env);
-    return json({ route: "ask", ...(await ask(env, askInput(b))) });
+    return json({ route: "ask", ...(await ask(env, { ...askInput(b), owner })) });
   }
 
   if (path === "/api/jury" && method === "POST") {
@@ -57,7 +58,7 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
     const jurors = Array.isArray(b.jurors) ? (b.jurors as unknown[]).map(String).filter(Boolean).slice(0, 5) : [];
     if (jurors.length === 0) throw new HttpError(400, "Pick at least one juror (an author from /api/authors)");
     await budget(env, jurors.length + 1);
-    return json({ route: "jury", ...(await jury(env, { jurors, project: (b.project ?? {}) as ProjectSummary, pitch: str(b.pitch), lang: str(b.lang) })) });
+    return json({ route: "jury", ...(await jury(env, { jurors, project: (b.project ?? {}) as ProjectSummary, pitch: str(b.pitch), lang: str(b.lang), owner })) });
   }
 
   // one door for the panel: text or a transcript of speech, sent to the agent or to the jury
@@ -70,16 +71,16 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
     if (r === "jury" && Array.isArray(b.jurors) && b.jurors.length) {
       await budget(env, b.jurors.length + 1);
       return json({ route: "jury", ...(await jury(env, { jurors: (b.jurors as unknown[]).map(String).slice(0, 5),
-        project: (b.project ?? {}) as ProjectSummary, pitch: message, lang: str(b.lang) })) });
+        project: (b.project ?? {}) as ProjectSummary, pitch: message, lang: str(b.lang), owner })) });
     }
-    return json({ route: "ask", ...(await ask(env, askInput(b))) });
+    return json({ route: "ask", ...(await ask(env, { ...askInput(b), owner })) });
   }
 
   // the eval generator reads chunks by id (`<source>:<n>`) to write its test questions from them
   if (path === "/api/chunks" && method === "POST") {
     authorize(request, env);
     const ids = ((await body(request)).ids as unknown[] ?? []).map(String).slice(0, 20);
-    const vectors = ids.length ? await env.VECTORIZE.getByIds(ids) : [];
+    const vectors = ids.length ? [...await env.VECTORIZE.getByIds(ids), ...(env.VECTORIZE_PRIVATE ? await env.VECTORIZE_PRIVATE.getByIds(ids) : [])] : [];
     return json({ chunks: vectors.filter(v => v.metadata).map(v => ({ id: v.id, ...(v.metadata as Json) })) });
   }
 
@@ -108,6 +109,12 @@ function askInput(b: Json) {
 
 async function budget(env: Env, calls = 1) {
   if (!(await allow(env, calls))) throw new HttpError(429, "The assistant has reached today's limit. Please try again tomorrow.");
+}
+
+/** The owner (OWNER_TOKEN or INGEST_TOKEN) also searches the private index; everyone else only the public one */
+export function isOwner(request: Request, env: Env): boolean {
+  const auth = request.headers.get("authorization") ?? "";
+  return [env.OWNER_TOKEN, env.INGEST_TOKEN].some(t => !!t && t.length >= 16 && auth === `Bearer ${t}`);
 }
 
 function authorize(request: Request, env: Env) {

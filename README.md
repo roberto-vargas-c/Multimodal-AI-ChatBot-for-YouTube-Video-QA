@@ -87,7 +87,7 @@ npm run dev                            # http://localhost:8787 (Vectorize and Wo
 **Deploy.** `bash scripts/setup-cloudflare.sh` creates the Vectorize index and its metadata indexes, the D1 database and its tables,
 deploys the Worker and sets its secrets. The workflow `.github/workflows/deploy.yml` runs the same on every push to `main`; add the
 repository secrets `CLOUDFLARE_API_TOKEN` (Workers Scripts, D1, Vectorize, Workers AI: Edit), `CLOUDFLARE_ACCOUNT_ID`,
-`ANTHROPIC_API_KEY`, `INGEST_TOKEN`, and optionally `LANGSMITH_API_KEY` and `KEYSTONE_BOT_TOKEN`.
+`ANTHROPIC_API_KEY`, `INGEST_TOKEN`, and optionally `LANGSMITH_API_KEY`, `KEYSTONE_BOT_TOKEN` and `OWNER_TOKEN`.
 
 **Fill the library** (from your own machine: YouTube often refuses requests from cloud servers):
 
@@ -95,8 +95,15 @@ repository secrets `CLOUDFLARE_API_TOKEN` (Workers Scripts, D1, Vectorize, Worke
 export JURY_URL=https://keystone-jury.<subdomain>.workers.dev INGEST_TOKEN=…
 npm run ingest:youtube -- --url "https://www.youtube.com/watch?v=…" --author "Lecturer" --lang en --typology school
 npm run ingest:book -- --pdf books/my-book.pdf --author "Author" --title "Title" --offset 12 --lang de --country DE
+npm run ingest:book -- --pdf books/copyrighted.pdf --author "Author" --title "Title" --private   # owner-only index
 cp ingest/library.example.json ingest/library.json && npm run ingest:library     # everything listed at once
 ```
+
+**Private books.** A copyrighted book goes in with `--private` (or `"private": true` in `library.json`). It is stored in a second
+Vectorize index, `keystone-jury-private`, and marked private in D1. The public endpoints never query it, and `/api/sources` and
+`/api/authors` leave it out. A request with `Authorization: Bearer <OWNER_TOKEN>` (or the `INGEST_TOKEN`) searches both indexes,
+for asking and for the jury. On the demo page, open it once as `…/#owner=<OWNER_TOKEN>`. Facts proposed from a private book keep
+its title and page as evidence but not its text, and an owner's chat history is stored apart from public sessions.
 
 A video without captions: `yt-dlp -x --audio-format mp3 <url>`, then add `--audio file.mp3` (Whisper through the Workers AI REST
 API, with `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`).

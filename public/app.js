@@ -1,3 +1,11 @@
+// The owner opens the page once with #owner=<OWNER_TOKEN> to search the private books too; the key stays in this tab only.
+function ownerKey() {
+  try {
+    const m = location.hash.match(/owner=([^&]+)/);
+    if (m) { sessionStorage.setItem("owner", decodeURIComponent(m[1])); history.replaceState(null, "", location.pathname + location.search); }
+    return sessionStorage.getItem("owner") ?? "";
+  } catch { return ""; }
+}
 // The demo page: the same API the Keystone panel uses.
 const $ = s => document.querySelector(s);
 const sessionId = (() => { try { return localStorage.jurySession ??= crypto.randomUUID(); } catch { return crypto.randomUUID(); } })();
@@ -15,7 +23,8 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
 });
 
 async function api(path, body) {
-  const res = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const headers = { "content-type": "application/json", ...(ownerKey() ? { authorization: `Bearer ${ownerKey()}` } : {}) };
+  const res = await fetch(path, body === undefined ? { headers } : { method: "POST", headers, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? res.statusText);
   return data;

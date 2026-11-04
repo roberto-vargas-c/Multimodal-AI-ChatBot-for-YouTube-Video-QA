@@ -30,7 +30,7 @@ const ChairAnswer = z.object({
 export type JurorResult = z.infer<typeof JurorAnswer> & { juror: string; passages: Hit[]; dropped: number };
 export type JuryResult = { jurors: JurorResult[]; chair: z.infer<typeof ChairAnswer> | null };
 
-export interface JuryInput { jurors: string[]; project: ProjectSummary; pitch?: string; lang?: string }
+export interface JuryInput { jurors: string[]; project: ProjectSummary; pitch?: string; lang?: string; owner?: boolean }
 
 /** The searches a juror runs on its own author's work: the project's type and idea, its facade, its structure, its site */
 export function queries(p: ProjectSummary, pitch?: string): string[] {
@@ -45,7 +45,7 @@ export function queries(p: ProjectSummary, pitch?: string): string[] {
 
 async function judge(env: Env, juror: string, input: JuryInput): Promise<JurorResult> {
   const found = new Map<string, Hit>();
-  for (const hits of await Promise.all(queries(input.project, input.pitch).map(q => search(env, q, { author: juror }, 4))))
+  for (const hits of await Promise.all(queries(input.project, input.pitch).map(q => search(env, q, { author: juror }, 4, !!input.owner))))
     for (const h of hits) if (!found.has(h.chunkId)) found.set(h.chunkId, h);
   const passages = [...found.values()].sort((a, b) => b.score - a.score).slice(0, 10);
   if (passages.length === 0)

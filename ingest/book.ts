@@ -1,9 +1,10 @@
 // Adds a book (a PDF) to the library: the text of each page, cut into chunks that keep their page number.
 //
 //   npx tsx ingest/book.ts --pdf path/to/book.pdf --author "Author" --title "Title" \
-//     [--id short-slug] [--pages 12-240] [--offset 0] [--lang de] [--country DE] [--typology hospital] [--year 2019] [--url …]
+//     [--id short-slug] [--pages 12-240] [--offset 0] [--lang de] [--country DE] [--typology hospital] [--year 2019] [--url …] [--private]
 //
 // --offset: printed page = PDF page - offset, so the citations match the printed book.
+// --private: a copyrighted book goes into the owner-only index; only requests with OWNER_TOKEN or INGEST_TOKEN search it.
 // A scanned book without a text layer needs OCR first (e.g. ocrmypdf).
 import { readFile } from "node:fs/promises";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
@@ -30,10 +31,11 @@ async function main() {
   const source: Source = {
     id: a.id ?? slug(`${a.author.split(" ").at(-1)}-${a.title}`), kind: "book", title: a.title, author: a.author, url: a.url,
     language: a.lang, year: a.year ? Number(a.year) : undefined, country: a.country ?? "*", typology: a.typology ?? "*", summary: a.summary,
+    private: a.private === "true" || undefined,
   };
   console.log(`${pages.length} pages with text`);
   const r = await upload(source, { pages });
-  console.log(`${source.title}: ${r.chunks} chunks in the index`);
+  console.log(`${source.title}: ${r.chunks} chunks in the ${source.private ? "private" : "public"} index`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch(e => { console.error(e.message); process.exit(1); });

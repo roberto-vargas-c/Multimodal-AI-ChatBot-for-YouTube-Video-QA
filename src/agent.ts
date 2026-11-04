@@ -13,7 +13,7 @@ import type { Env, ProjectSummary } from "./types";
 
 const MEMORY = 12;   // messages of earlier turns the agent sees
 
-export interface AskInput { sessionId: string; message: string; project?: ProjectSummary; lang?: string; allowWrites?: boolean }
+export interface AskInput { sessionId: string; message: string; project?: ProjectSummary; lang?: string; allowWrites?: boolean; owner?: boolean }
 export interface AskOutput { answer: string; citations: Hit[]; facts: unknown[]; tools: string[] }
 
 function tools(env: Env, input: AskInput, seen: Map<string, Hit>, written: unknown[], used: string[]) {
@@ -23,7 +23,7 @@ function tools(env: Env, input: AskInput, seen: Map<string, Hit>, written: unkno
 
   const searchSources = tool(
     ({ query, author, kind, typology }) => track("search_sources", async () =>
-      show(remember(await search(env, query, { author, kind, typology }, 6)))),
+      show(remember(await search(env, query, { author, kind, typology }, 6, !!input.owner)))),
     {
       name: "search_sources",
       description: "Semantic search over the transcripts of architecture videos (lectures, jury sessions, office talks) and the pages of " +
@@ -37,7 +37,7 @@ function tools(env: Env, input: AskInput, seen: Map<string, Hit>, written: unkno
     });
 
   const getPassage = tool(
-    ({ id }) => track("get_passage", async () => show(remember(await passage(env, id)))),
+    ({ id }) => track("get_passage", async () => show(remember(await passage(env, id, !!input.owner)))),
     {
       name: "get_passage",
       description: "The full passage for an id from search_sources, with the passage before and after it, when a hit is cut off or needs context.",
@@ -46,7 +46,7 @@ function tools(env: Env, input: AskInput, seen: Map<string, Hit>, written: unkno
 
   const listSources = tool(
     () => track("list_sources", async () => {
-      const [all, people] = await Promise.all([sources(env), authors(env)]);
+      const [all, people] = await Promise.all([sources(env, !!input.owner), authors(env, !!input.owner)]);
       return JSON.stringify({ authors: people, sources: all.map(s => ({ id: s.id, kind: s.kind, title: s.title, author: s.author, year: s.year })) });
     }),
     { name: "list_sources", description: "The videos and books in the index and their authors.", schema: z.object({}) });
@@ -82,7 +82,7 @@ function tools(env: Env, input: AskInput, seen: Map<string, Hit>, written: unkno
       const hit = seen.get(id);
       if (!hit) return `Passage ${id} was not retrieved in this conversation; search for it first.`;
       const r = await propose(env, { category, q, country, typology, en, value,
-        evidence: { source: hit.sourceId, where: hit.where, kind: hit.kind, quote: hit.quote } });
+        evidence: { source: hit.sourceId, where: hit.where, kind: hit.kind, quote: hit.private ? undefined : hit.quote } });
       written.push({ id: r.fact.id, en: r.fact.en, value: r.fact.value, created: r.created, confidence: r.confidence, status: r.status });
       return JSON.stringify({ saved: r.fact.id, created: r.created, confidence: r.confidence, status: r.status });
     }),
@@ -119,7 +119,8 @@ function systemPrompt(input: AskInput): string {
 }
 
 export async function ask(env: Env, input: AskInput): Promise<AskOutput> {
-  const memory = new CloudflareD1MessageHistory({ tableName: "messages", sessionId: input.sessionId, database: env.DB });
+  // owner chats can hold private passages, so they are kept apart from public sessions
+  const memory = new CloudflareD1MessageHistory({ tableName: "messages", sessionId: (input.owner ? "owner:" : "") + input.sessionId, database: env.DB });
   const history: BaseMessage[] = (await memory.getMessages()).slice(-MEMORY);
   const seen = new Map<string, Hit>(), written: unknown[] = [], used: string[] = [];
   const agent = createAgent({

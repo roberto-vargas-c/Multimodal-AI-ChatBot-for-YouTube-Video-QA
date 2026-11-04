@@ -1,3 +1,4 @@
 ANTHROPIC_API_KEY=
 LANGSMITH_API_KEY=
 INGEST_TOKEN=any-long-random-text
+OWNER_TOKEN=another-long-random-text-for-the-private-books
