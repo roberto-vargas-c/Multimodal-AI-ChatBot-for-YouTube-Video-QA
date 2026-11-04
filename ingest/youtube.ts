@@ -46,4 +46,4 @@ async function main() {
   console.log(`${source.title}: ${r.chunks} chunks in the index`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main().catch(e => { console.error(e.message); process.exit(1); });
+if (import.meta.url === (await import("node:url")).pathToFileURL(process.argv[1]).href) main().catch(e => { console.error(e.message); process.exit(1); });

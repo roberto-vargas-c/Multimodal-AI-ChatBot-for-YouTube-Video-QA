@@ -12,7 +12,7 @@ const lib = JSON.parse(await readFile(file, "utf8")) as { videos?: Record<string
 let failed = 0;
 for (const [script, items] of [["youtube.ts", lib.videos ?? []], ["book.ts", lib.books ?? []]] as const)
   for (const item of items) {
-    const r = spawnSync("npx", ["tsx", join(here, script), ...flags(item)], { stdio: "inherit" });
+    const r = spawnSync(process.execPath, ["--import", "tsx", join(here, script), ...flags(item)], { stdio: "inherit" });
     if (r.status !== 0) failed++;
   }
 console.log(failed ? `${failed} source(s) failed` : "All sources ingested");
