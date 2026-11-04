@@ -12,6 +12,7 @@
     "ingest:youtube": "tsx ingest/youtube.ts",
     "ingest:book": "tsx ingest/book.ts",
     "ingest:library": "tsx ingest/library.ts",
+    "eval:generate": "tsx eval/generate.ts",
     "eval": "tsx eval/run.ts"
   },
   "repository": {

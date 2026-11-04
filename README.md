@@ -22,7 +22,7 @@ Keystone project only from their own words, and a chair sums up. Design rules th
 | 2. Speech recognition | Whisper large-v3-turbo on Workers AI: spoken questions and pitches (`/api/transcribe`), and videos without captions at ingestion |
 | 3. Conversational interface, text or voice | The demo page and Keystone's Jury panel, both with a microphone button; one memory per conversation |
 | 4. YouTube content into a vector database | Captions (or Whisper) → cleaned → 60 s windows with 15 s overlap → bge-m3 embeddings → Cloudflare Vectorize, with author, kind, building type, country |
-| 5. Testing and evaluation | 17 unit tests (`npm test`) and a LangSmith evaluation of the live app: correctness (LLM judge), retrieval hit, citations, refusals, latency (`eval/run.ts`) |
+| 5. Testing and evaluation | 19 unit tests (`npm test`) and a LangSmith evaluation of the live app: correctness (LLM judge), retrieval hit, citations, refusals, latency (`eval/run.ts`), on questions it writes itself from the library (`eval/generate.ts`) |
 | 6. Agents with several tools and memory | A LangChain agent with 6 tools and D1-backed memory; a LangGraph jury of N jurors and a chair; a router between them |
 | LangChain: preprocessing, agents, routing, retrieval | `src/chunk.ts`, `src/agent.ts`, `src/router.ts`, `src/store.ts` (`@langchain/cloudflare` Vectorize store and embeddings) |
 | LangSmith | Every request is traced (`LANGSMITH_TRACING`); the evaluation runs as LangSmith experiments to compare settings |
@@ -99,8 +99,10 @@ cp ingest/library.example.json ingest/library.json && npm run ingest:library    
 A video without captions: `yt-dlp -x --audio-format mp3 <url>`, then add `--audio file.mp3` (Whisper through the Workers AI REST
 API, with `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`).
 
-**Evaluate.** Write questions with their reference answers and where they are in `eval/dataset.jsonl` (see
-`eval/dataset.example.jsonl`), then `npm run eval -- --name baseline`. Each run is a LangSmith experiment with five scores per question:
+**Evaluate.** `npm run eval:generate` writes the test questions itself: it reads passages spread over every video and book,
+has Claude write a question and reference answer for each (the passage is the reference source), and adds questions the library
+cannot answer. Read `eval/dataset.jsonl` once and delete any weak ones, then `npm run eval -- --dataset keystone-jury-qa-1 --name baseline`.
+Hand-written questions in the same format (`eval/dataset.example.jsonl`) can be added. Each run is a LangSmith experiment with five scores per question:
 `correctness` (Claude as judge), `retrieval_hit` (a citation from the right video within ±30 s, or the right page), `cites_sources` /
 `declined_unanswerable`, `searched`, and `latency_s`.
 
@@ -114,6 +116,7 @@ API, with `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`).
 | `POST /api/transcribe` | audio body (webm, ogg, mp3, wav) → `{ text, language }` |
 | `GET /api/sources`, `/api/authors` | the library |
 | `GET /api/facts` | the facts written into the knowledge base, in Keystone's shape |
+| `POST /api/chunks` | `Bearer INGEST_TOKEN`; `{ ids: ["<source>:<n>"] }`, for the question generator |
 | `POST /api/ingest` | `Bearer INGEST_TOKEN`; `{ source, segments \| pages \| chunks }` |
 
 Limits: `AI_PER_DAY` paid model calls per day for the whole Worker (default 300), 6 model calls per question, 20 MB per recording.

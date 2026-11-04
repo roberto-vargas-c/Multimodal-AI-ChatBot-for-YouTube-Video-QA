@@ -75,9 +75,17 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
     return json({ route: "ask", ...(await ask(env, askInput(b))) });
   }
 
+  // the eval generator reads chunks by id (`<source>:<n>`) to write its test questions from them
+  if (path === "/api/chunks" && method === "POST") {
+    authorize(request, env);
+    const ids = ((await body(request)).ids as unknown[] ?? []).map(String).slice(0, 20);
+    const vectors = ids.length ? await env.VECTORIZE.getByIds(ids) : [];
+    return json({ chunks: vectors.filter(v => v.metadata).map(v => ({ id: v.id, ...(v.metadata as Json) })) });
+  }
+
   // ingestion: the CLI in ingest/ sends a source with its transcript segments or book pages, or chunks it made itself
   if (path === "/api/ingest" && method === "POST") {
-    if (!env.INGEST_TOKEN || request.headers.get("authorization") !== `Bearer ${env.INGEST_TOKEN}`) throw new HttpError(401, "Not allowed");
+    authorize(request, env);
     const b = await body(request);
     const source = b.source as Source;
     if (!source?.id || !source.title || !source.author || !["video", "book"].includes(source.kind)) throw new HttpError(400, "source needs id, kind, title, author");
@@ -100,6 +108,10 @@ function askInput(b: Json) {
 
 async function budget(env: Env, calls = 1) {
   if (!(await allow(env, calls))) throw new HttpError(429, "The assistant has reached today's limit. Please try again tomorrow.");
+}
+
+function authorize(request: Request, env: Env) {
+  if (!env.INGEST_TOKEN || request.headers.get("authorization") !== `Bearer ${env.INGEST_TOKEN}`) throw new HttpError(401, "Not allowed");
 }
 
 class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
