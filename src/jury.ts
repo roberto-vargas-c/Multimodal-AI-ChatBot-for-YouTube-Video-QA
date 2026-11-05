@@ -127,7 +127,7 @@ async function judge(env: Env, juror: string, input: JuryInput): Promise<JurorRe
   if (passages.length === 0)
     return { juror, verdict: "approve with changes", summary: `There is nothing by ${juror} in the library to judge from.`, ...empty };
 
-  const model = chatModel(env, { maxTokens: 1600, temperature: 0.3 }).withStructuredOutput(JurorAnswer, { name: "crit" });
+  const model = chatModel(env, { maxTokens: 1600 }).withStructuredOutput(JurorAnswer, { name: "crit" });
   const out = await model.invoke([
     { role: "system", content: [
       `You sit on a theoretical architecture crit as ${juror}. You speak only from the passages below, which are ${juror}'s own`,
@@ -149,7 +149,7 @@ async function judge(env: Env, juror: string, input: JuryInput): Promise<JurorRe
 /** The second round: a juror reads the others' readings and answers up to three of them, from their own passages */
 async function reply(env: Env, me: JurorResult, others: JurorResult[], input: JuryInput): Promise<Reply[]> {
   if (!me.reasons.length || !others.some(o => o.reasons.length)) return [];
-  const model = chatModel(env, { maxTokens: 900, temperature: 0.4 }).withStructuredOutput(Replies, { name: "replies" });
+  const model = chatModel(env, { maxTokens: 900 }).withStructuredOutput(Replies, { name: "replies" });
   const out = await model.invoke([
     { role: "system", content: [
       `You are ${me.juror} in the second round of a theoretical architecture crit. You have heard the other jurors.`,
@@ -227,7 +227,7 @@ export async function questions(env: Env, input: JuryInput): Promise<Question[]>
   const found = await Promise.all(input.jurors.map(async j => ({ juror: j, passages: await gather(env, j, input, 5) })));
   const heard = found.filter(f => f.passages.length);
   if (!heard.length) return [];
-  const model = chatModel(env, { maxTokens: 900, temperature: 0.4 }).withStructuredOutput(QuestionsAnswer, { name: "questions" });
+  const model = chatModel(env, { maxTokens: 900 }).withStructuredOutput(QuestionsAnswer, { name: "questions" });
   const out = await model.invoke([
     { role: "system", content: [
       "Before a theoretical architecture crit, each juror below asks the architect one or two questions about their intentions,",

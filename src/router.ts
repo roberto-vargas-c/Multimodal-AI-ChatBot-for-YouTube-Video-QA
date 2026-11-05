@@ -18,7 +18,7 @@ export function routeByWords(message: string): Route | null {
 export async function route(env: Parameters<typeof chatModel>[0], message: string): Promise<Route> {
   const byWords = routeByWords(message);
   if (byWords) return byWords;
-  const out = await chatModel(env, { maxTokens: 50, temperature: 0 })
+  const out = await chatModel(env, { maxTokens: 50 })
     .withStructuredOutput(z.object({ route: z.enum(["ask", "jury"]) }), { name: "route" })
     .invoke([{ role: "system", content: "Reply 'jury' if the user wants their own design judged or reviewed, otherwise 'ask'." },
       { role: "user", content: message }], { runName: "router", tags: ["router"] });

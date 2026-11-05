@@ -58,7 +58,7 @@ function grounded({ outputs, referenceOutputs }: { outputs: Record<string, any>;
 const latency = ({ outputs }: { outputs: Record<string, any> }) => ({ key: "latency_s", score: Math.round(outputs.latency * 100) / 100 });
 const usedSearch = ({ outputs }: { outputs: Record<string, any> }) => ({ key: "searched", score: (outputs.tools as string[]).includes("search_sources") ? 1 : 0 });
 
-const judge = new ChatAnthropic({ model: process.env.JUDGE_MODEL ?? "claude-haiku-5-5", temperature: 0, maxTokens: 300 })
+const judge = new ChatAnthropic({ model: process.env.JUDGE_MODEL ?? "claude-haiku-5-5", maxTokens: 300 })
   .withStructuredOutput(z.object({ score: z.number().min(0).max(1), reason: z.string() }), { name: "grade" });
 
 /** LLM-as-judge: does the answer say what the reference says (or decline, for an unanswerable question)? */

@@ -1,12 +1,13 @@
 import { ChatAnthropic } from "@langchain/anthropic";
 import type { Env } from "./types";
 
-export function chatModel(env: Env, opts: { maxTokens?: number; temperature?: number } = {}) {
+// No temperature, top_p or top_k: current Claude models (Haiku 5.5 and later) reject them with a 400. They think adaptively by
+// default, and that thinking counts toward maxTokens, so the default leaves room for it.
+export function chatModel(env: Env, opts: { maxTokens?: number } = {}) {
   return new ChatAnthropic({
     model: env.CHAT_MODEL ?? "claude-haiku-5-5",
     apiKey: env.ANTHROPIC_API_KEY,
-    maxTokens: opts.maxTokens ?? 1500,
-    temperature: opts.temperature ?? 0.2,
+    maxTokens: opts.maxTokens ?? 4000,
   });
 }
 

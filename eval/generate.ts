@@ -33,7 +33,7 @@ for (let i = 0; i < ids.length; i += 20) {
 }
 console.log(`${chunks.length} passages from ${sources.length} sources`);
 
-const model = new ChatAnthropic({ model: process.env.GEN_MODEL ?? "claude-haiku-5-5", temperature: 0.3, maxTokens: 600 });
+const model = new ChatAnthropic({ model: process.env.GEN_MODEL ?? "claude-haiku-5-5", maxTokens: 600 });
 
 const QA = model.withStructuredOutput(z.object({
   usable: z.boolean().describe("false if the passage is an intro, credits, small talk or too vague to ask about"),
