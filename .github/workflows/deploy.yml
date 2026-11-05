@@ -6,6 +6,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      ai_per_day:
+        description: "Paid model calls per day (AI_PER_DAY). Raise it for a demo day; the next push to main sets it back to wrangler.jsonc"
+        required: false
+        default: ""
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -34,3 +39,4 @@ jobs:
           INGEST_TOKEN: ${{ secrets.INGEST_TOKEN }}
           KEYSTONE_BOT_TOKEN: ${{ secrets.KEYSTONE_BOT_TOKEN }}
           OWNER_TOKEN: ${{ secrets.OWNER_TOKEN }}
+          AI_PER_DAY: ${{ inputs.ai_per_day }}
