@@ -79,6 +79,16 @@ skipped with one juror).
 - *Positions*: `src/positions.ts` groups authors into schools of thought (phenomenology, typology, human-scale urbanism …). Calling up
   a position seats its authors from the library, and the crit is framed around it.
 
+**Precedents: pictures with a jury's comments.** Next to the authors, the library can hold *precedents*: entries (a competition
+entry, a built work) with up to six pictures and the written assessment a real jury gave them. The jury's text is embedded like a
+book page (kind `precedent`), so the crit finds the entries closest to the project by meaning; the pictures are kept in D1,
+downscaled at ingestion. In a crit, up to two precedents go to every juror and to the chair, their lead picture right after the
+views of the model, with what their jury wrote. Each juror can compare the project with them through its own concepts
+(`comparisons`, each tied to a precedent id; one on an unknown id is dropped), and the result returns the precedents compared
+with, picture included, for Keystone to show. Finding them costs no paid model call (one embedding, one Vectorize query), and if
+none are found the crit runs as before. A precedent is named only by a neutral label ("Hospital, 1st prize, 2024"): no office
+or author is stored. `"private": true` keeps one for owner requests only, as with private books.
+
 **Knowledge base.** A fact is stored in Keystone's shape (`category`, question `q`, country, building type, `en`, `value`, `evidence`).
 Its confidence is Keystone's: 1 - Π(1 - weight) over distinct sources, a video counting 0.25 and a book 0.3, × 0.7 when sources
 disagree; from 0.5 it applies. So one video or book never changes Keystone's designs alone: it waits under Needs review until a second
@@ -114,6 +124,16 @@ Vectorize index, `keystone-jury-private`, and marked private in D1. The public e
 `/api/authors` leave it out. A request with `Authorization: Bearer <OWNER_TOKEN>` (or the `INGEST_TOKEN`) searches both indexes,
 for asking and for the jury. In Keystone, curators get it automatically when `KEYSTONE_JURY_OWNER_TOKEN` is set there. Facts proposed from a private book keep
 its title and page as evidence but not its text, and an owner's chat history is stored apart from public sessions.
+
+Precedents (pictures and the jury's text from your own disk; only material you are allowed to use):
+
+```bash
+cp ingest/precedents.example.json ingest/precedents.json && npm run ingest:precedents
+```
+
+Each picture is cropped if `crop` is given (`[left, top, width, height]` as fractions, to cut one view out of an A0 board) and
+downscaled to 1568 px. The jury's text comes inline (`jury`) or from a `.txt` or `.pdf` file (`juryFile`, `juryPages`).
+`npm run db:migrate` once first, for the precedent tables.
 
 A video without captions: `yt-dlp -x --audio-format mp3 <url>`, then add `--audio file.mp3` (Whisper through the Workers AI REST
 API, with `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`).

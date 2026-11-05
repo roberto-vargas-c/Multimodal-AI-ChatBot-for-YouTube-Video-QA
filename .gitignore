@@ -6,3 +6,5 @@ ingest/library.json
 ingest/audio/
 books/
 eval/results/
+ingest/precedents.json
+precedents/

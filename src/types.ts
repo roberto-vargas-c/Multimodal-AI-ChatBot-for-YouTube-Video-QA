@@ -20,7 +20,7 @@ export interface Env {
   LANGSMITH_PROJECT?: string;
 }
 
-export type SourceKind = "video" | "book";
+export type SourceKind = "video" | "book" | "precedent";   // precedent: a jury's written assessment of an entry (see precedents.ts)
 
 /** One video or book. `id` is short and stable: the YouTube id, or a slug for a book. */
 export interface Source {
@@ -104,3 +104,18 @@ export interface SiteContext {
 
 /** A picture of the model the jury looks at: a data URL (JPEG, PNG or WebP) and what it shows */
 export interface View { label: string; url: string }
+
+/** A precedent: an entry (a competition entry, a built work) with its pictures and the jury's written assessment of it.
+ *  It is named by a neutral label only: no office or author is kept. */
+export interface Precedent {
+  id: string;
+  title: string;                   // a neutral label, e.g. "Hospital, 1st prize, 2024"
+  jury: string;                    // the jury's written assessment, as published
+  typology?: string;
+  country?: string;
+  year?: number;
+  prize?: string;
+  url?: string;
+  language?: string;
+  private?: boolean;               // true: only owner requests use it (as with private books)
+}

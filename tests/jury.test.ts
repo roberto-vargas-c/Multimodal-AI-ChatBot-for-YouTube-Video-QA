@@ -15,7 +15,8 @@ vi.mock("../src/llm", () => ({
             { concept: "edges", stance: "praise", point: "p", passage: id, precedent: { building: "Strøget", passage: id } },
             { concept: "invented", stance: "concern", point: "p", passage: "nowhere:9" },
             { concept: "type", stance: "concern", point: "p", passage: id, precedent: { building: "made up", passage: "nowhere:1" } },
-          ] };
+          ],
+          comparisons: [{ precedent: "school-2025-2", point: "its yard opens to the street, this one turns away" }, { precedent: "made-up", point: "x" }] };
         if (name === "replies") return { replies: [
           { to: me === "Jan Gehl" ? "Aldo Rossi" : "Jan Gehl", concept: "edges", response: "challenge", point: "r", passage: id },
           { to: "Somebody else", concept: "x", response: "agree", point: "r", passage: id },
@@ -74,6 +75,25 @@ describe("the theoretical crit", () => {
     expect(b).toContain("THE ARCHITECT'S IDEA\nopen to the street");
     expect(b).toContain("Q: For whom?\nA: the neighbourhood");
     expect(b).not.toContain("Q: x");
+  });
+
+  it("compares the project with precedents it was shown, and returns only those it compared", async () => {
+    const shown = [
+      { id: "school-2025-2", title: "Primary school, 2nd prize, 2025", jury: "The yard opens to the street.", image: { label: "Lead image", url: "data:image/jpeg;base64,AAAA" } },
+      { id: "hall-2023-1", title: "Sports hall, 1st prize, 2023", jury: "A calm volume." },
+    ];
+    const r = await jury(env, { jurors: ["Jan Gehl"], project, precedents: shown });
+    expect(r.jurors[0].comparisons.map(c => c.precedent)).toEqual(["school-2025-2"]);    // an unknown precedent is dropped
+    expect(r.precedents?.map(p => p.id)).toEqual(["school-2025-2"]);
+    const r2 = await jury(env, { jurors: ["Jan Gehl"], project, precedents: [] });
+    expect(r2.jurors[0].comparisons).toEqual([]);
+    expect(r2.precedents).toBeUndefined();
+  });
+
+  it("goes on without precedents when none can be found", async () => {
+    const r = await jury(env, { jurors: ["Jan Gehl"], project });
+    expect(r.jurors[0].reasons.length).toBeGreaterThan(0);
+    expect(r.precedents).toBeUndefined();
   });
 
   it("grounded keeps a point whose precedent is unknown, without the precedent", () => {

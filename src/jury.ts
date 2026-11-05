@@ -4,13 +4,16 @@
 // A juror names the ideas they apply and reads the project through each one, with a passage for every point and, where the
 // author gives one, a built precedent. In the debate the jurors answer each other. The chair does not average them: it sets
 // out the tensions, the questions they leave the architect, and what to read next. Before all that the jury can ask the
-// architect about their intentions (`questions`), and the answers go into the crit.
+// architect about their intentions (`questions`), and the answers go into the crit. Next to the views of the model the jurors
+// see up to two precedents: entries a real jury has judged, with their lead picture and that jury's written assessment, and
+// compare the project with them through their own concepts.
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { z } from "zod";
 import { chatModel } from "./llm";
 import { search, type Hit } from "./store";
 import { forModel } from "./citations";
 import { position as findPosition } from "./positions";
+import { findPrecedents, forModel as precedentText, type Shown } from "./precedents";
 import type { Env, ProjectSummary, View } from "./types";
 
 const Verdict = z.enum(["approve", "approve with changes", "reject"]).default("approve with changes");
@@ -31,6 +34,10 @@ export const JurorAnswer = z.object({
   verdict: Verdict,
   summary: z.string().default("").describe("Two or three sentences in the juror's voice, about this project"),
   reasons: z.array(Reading).default([]).describe("2-5 readings"),
+  comparisons: z.array(z.object({
+    precedent: z.string().describe("The id of a precedent from the list"),
+    point: z.string().describe("What the project does better, worse or differently than the precedent, in its picture and in what its jury praised or faulted, read through your concepts"),
+  })).default([]).describe("Up to two, only when precedents are given"),
 });
 
 const Replies = z.object({
@@ -69,9 +76,10 @@ const QuestionsAnswer = z.object({
 
 type Reason = z.infer<typeof Reading>;
 export type Reply = z.infer<typeof Replies>["replies"][number];
-export type JurorResult = Omit<z.infer<typeof JurorAnswer>, "reasons"> & { juror: string; reasons: Reason[]; replies: Reply[]; passages: Hit[]; dropped: number };
+export type Comparison = z.infer<typeof JurorAnswer>["comparisons"][number];
+export type JurorResult = Omit<z.infer<typeof JurorAnswer>, "reasons" | "comparisons"> & { juror: string; reasons: Reason[]; comparisons: Comparison[]; replies: Reply[]; passages: Hit[]; dropped: number };
 export type Chair = Omit<z.infer<typeof ChairAnswer>, "reading"> & { reading: (Hit & { why: string })[] };
-export type JuryResult = { jurors: JurorResult[]; chair: Chair | null; position?: string };
+export type JuryResult = { jurors: JurorResult[]; chair: Chair | null; position?: string; precedents?: Shown[] };
 export type Question = z.infer<typeof QuestionsAnswer>["questions"][number] & { where?: string; title?: string };
 
 export interface Answer { question: string; answer: string }
@@ -80,6 +88,7 @@ export interface JuryInput {
   position?: string;              // a school of thought from positions.ts: the jurors speak for it
   answers?: Answer[];             // the architect's answers to the jury's questions
   views?: View[];                 // rendered views of the model, which the jurors and the chair look at
+  precedents?: Shown[];           // judged entries to compare with (found by jury() itself)
 }
 
 const language = (lang?: string) => lang === "de" ? "German" : "English";
@@ -98,7 +107,7 @@ export function queries(p: ProjectSummary, pitch?: string): string[] {
 }
 
 /** What the jury reads: the project, its programme and site context, and the architect's own words (the pitch, the answers) */
-export function brief(input: Pick<JuryInput, "project" | "pitch" | "answers" | "views">): string {
+export function brief(input: Pick<JuryInput, "project" | "pitch" | "answers" | "views" | "precedents">): string {
   const answers = (input.answers ?? []).filter(a => a.answer?.trim());
   const { programme, context, ...project } = input.project ?? {};
   const views = input.views ?? [];
@@ -106,14 +115,18 @@ export function brief(input: Pick<JuryInput, "project" | "pitch" | "answers" | "
     (programme && Object.keys(programme).length ? `\n\nPROGRAMME (the rooms as the massing places them; groundFloor: the uses on the ground floor, largest first)\n${JSON.stringify(programme, null, 1)}` : "") +
     (context && Object.keys(context).length ? `\n\nSITE CONTEXT (measured from the edge of the plot; north is up in the views)\n${JSON.stringify(context, null, 1)}` : "") +
     (views.length ? `\n\nVIEWS OF THE MODEL (attached): ${views.map((v, i) => `${i + 1}. ${v.label}`).join("; ")}` : "") +
+    (input.precedents?.length ? `\n\nPRECEDENTS (entries a real competition jury has judged; their pictures are attached after the views)\n` +
+      input.precedents.map((p, i) => precedentText(p, views.length + 1 + input.precedents!.slice(0, i).filter(x => x.image).length)).join("\n\n") : "") +
     (input.pitch ? `\n\nTHE ARCHITECT'S IDEA\n${input.pitch}` : "") +
     (answers.length ? `\n\nTHE ARCHITECT ANSWERED\n${answers.map(a => `Q: ${a.question}\nA: ${a.answer}`).join("\n")}` : "");
 }
 
-/** A user message with the views of the model in it, as images, before the text; just the text without views */
-export function withViews(text: string, views: View[] = []): string | ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[] {
-  if (!views.length) return text;
-  return [...views.flatMap((v, i) => [{ type: "text" as const, text: `View ${i + 1}: ${v.label}` }, { type: "image_url" as const, image_url: { url: v.url } }]),
+/** A user message with the views of the model in it, as images, then the precedents' pictures, before the text; just the text without any */
+export function withViews(text: string, views: View[] = [], precedents: Shown[] = []): string | ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[] {
+  const pics = [...views.map(v => ({ label: `View of the project: ${v.label}`, url: v.url })),
+    ...precedents.flatMap(p => p.image ? [{ label: `Precedent [${p.id}] ${p.title}: ${p.image.label}`, url: p.image.url }] : [])];
+  if (!pics.length) return text;
+  return [...pics.flatMap((v, i) => [{ type: "text" as const, text: `Picture ${i + 1}. ${v.label}` }, { type: "image_url" as const, image_url: { url: v.url } }]),
     { type: "text" as const, text }];
 }
 
@@ -127,6 +140,11 @@ export function views(v: unknown): View[] | undefined {
   }).slice(0, 2);
   return ok.length ? ok : undefined;
 }
+
+// how a juror uses the precedents, when there are any
+const COMPARE = "Where precedents are given, compare the project with up to two of them: look at their pictures next to the views," +
+  " and weigh what their jury praised or faulted. Say through your own concepts what the project does better, worse or differently," +
+  " citing the precedent's id. The precedents' jury is not you: never present its words as yours, and never name an office or author.";
 
 // what every juror and the chair are told about the material beyond the figures
 const LOOK = "Where the brief gives the programme with its ground floor uses, the site context or views of the model, read from them how the" +
@@ -153,7 +171,7 @@ const stance = (input: JuryInput) => {
 
 async function judge(env: Env, juror: string, input: JuryInput): Promise<JurorResult> {
   const passages = await gather(env, juror, input);
-  const empty = { position: "", reasons: [], replies: [], passages, dropped: 0 };
+  const empty = { position: "", reasons: [], comparisons: [], replies: [], passages, dropped: 0 };
   if (passages.length === 0)
     return { juror, verdict: "approve with changes", summary: `There is nothing by ${juror} in the library to judge from.`, ...empty };
 
@@ -165,15 +183,16 @@ async function judge(env: Env, juror: string, input: JuryInput): Promise<JurorRe
       "This is a discussion of ideas, not a score. State your position. Then name 2-5 concepts from your work and read the project",
       "through each: where it embodies the idea (praise) and where it misses or contradicts it (concern). Ground each in one passage id.",
       "Where a passage names a built work as an example of the idea, give it as the precedent with that passage id; never invent one.",
-      "Take the architect's own words seriously: judge the project against what they say they want, too.", LOOK,
+      "Take the architect's own words seriously: judge the project against what they say they want, too.", LOOK, COMPARE,
       `Still give an overall verdict. Write in ${language(input.lang)}.`,
     ].join(" ") },
-    { role: "user", content: withViews(`${brief(input)}\n\nPASSAGES\n` + passages.map(h => forModel(h, h.text)).join("\n\n"), input.views) },
+    { role: "user", content: withViews(`${brief(input)}\n\nPASSAGES\n` + passages.map(h => forModel(h, h.text)).join("\n\n"), input.views, input.precedents) },
   ], { runName: `juror: ${juror}`, tags: ["jury", "juror"] }));
   // a reason that cites a passage the juror was not given is dropped, so every point the user sees is grounded
   const known = (id: string) => passages.some(h => h.chunkId === id);
   const reasons = grounded(out.reasons, known).slice(0, 5);
-  return { juror, ...out, reasons, replies: [], passages, dropped: out.reasons.length - reasons.length };
+  const comparisons = out.comparisons.filter(c => input.precedents?.some(p => p.id === c.precedent)).slice(0, 2);
+  return { juror, ...out, reasons, comparisons, replies: [], passages, dropped: out.reasons.length - reasons.length };
 }
 
 /** The second round: a juror reads the others' readings and answers up to three of them, from their own passages */
@@ -206,6 +225,7 @@ export function transcript(jurors: JurorResult[]): string {
   return jurors.filter(j => j.reasons.length).map(j => [
     `${j.juror}: ${j.position} Verdict: ${j.verdict}. ${j.summary}`,
     ...j.reasons.map(r => `- [${r.stance}] ${r.concept}: ${r.point}${r.precedent ? ` (precedent: ${r.precedent.building})` : ""}`),
+    ...(j.comparisons ?? []).map(c => `- compared with [${c.precedent}]: ${c.point}`),
     ...j.replies.map(r => `- replies to ${r.to} (${r.response}, ${r.concept}): ${r.point}`),
   ].join("\n")).join("\n\n");
 }
@@ -231,7 +251,7 @@ export function juryGraph(env: Env) {
           `Write in ${language(s.input.lang)}.`,
         ].join(" ") },
         { role: "user", content: withViews(`${brief(s.input)}\n\nTHE CRIT\n${transcript(heard)}\n\nPASSAGES TO RECOMMEND\n` +
-          [...pool.values()].map(h => `[${h.chunkId}] ${h.author}, "${h.title}", ${h.where}: ${h.text.slice(0, 200)}`).join("\n"), s.input.views) },
+          [...pool.values()].map(h => `[${h.chunkId}] ${h.author}, "${h.title}", ${h.where}: ${h.text.slice(0, 200)}`).join("\n"), s.input.views, s.input.precedents) },
       ], { runName: "chair", tags: ["jury", "chair"] }));
       const reading = out.reading.flatMap(r => { const h = pool.get(r.passage); return h ? [{ ...h, why: r.why }] : []; }).slice(0, 4);
       return { chair: { ...out, tensions: out.tensions.filter(x => x.sides.length >= 2).slice(0, 3), questions: out.questions.slice(0, 3), next: out.next.slice(0, 4), reading } };
@@ -244,13 +264,18 @@ export function juryGraph(env: Env) {
 }
 
 export async function jury(env: Env, input: JuryInput): Promise<JuryResult> {
+  const precedents = input.precedents ?? await findPrecedents(env, input.project, input.pitch, !!input.owner);
+  input = { ...input, precedents };
   const out = await juryGraph(env).invoke({ input }, { runName: "keystone-jury", tags: ["jury"] });
   // the user is shown the passages a juror cited: for a reading, a precedent or a reply
   const jurors = out.jurors.map(j => {
     const cited = new Set([...j.reasons.flatMap(r => [r.passage, r.precedent?.passage]), ...j.replies.map(r => r.passage)]);
     return { ...j, passages: j.passages.filter(h => cited.has(h.chunkId)) };
   });
-  return { jurors, chair: out.chair ?? null, ...(input.position ? { position: input.position } : {}) };
+  // the precedents a juror compared the project with are shown with their picture
+  const used = new Set(jurors.flatMap(j => j.comparisons.map(c => c.precedent)));
+  const shown = precedents.filter(p => used.has(p.id));
+  return { jurors, chair: out.chair ?? null, ...(input.position ? { position: input.position } : {}), ...(shown.length ? { precedents: shown } : {}) };
 }
 
 /** Before the crit: each juror asks the architect about their intention, from what that juror cares about. One model call. */

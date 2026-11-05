@@ -9,6 +9,7 @@ import { transcribe } from "./speech";
 import { allow } from "./llm";
 import { ingest, sources, authors } from "./store";
 import { forKeystone } from "./facts";
+import { images, ingestPrecedent, listPrecedents, precedent } from "./precedents";
 import { chunkPages, chunkTranscript, type Chunk, type Page, type Segment } from "./chunk";
 import type { Env, ProjectSummary, Source } from "./types";
 
@@ -46,6 +47,7 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
     return json({ authors: list.map(a => ({ ...a, positions: positionsOf(a.author) })), positions: inLibrary(list.map(a => a.author)) });
   }
   if (path === "/api/facts" && method === "GET") return json(await forKeystone(env));
+  if (path === "/api/precedents" && method === "GET") return json({ precedents: await listPrecedents(env, owner) });
 
   if (path === "/api/transcribe" && method === "POST") {
     const audio = await request.arrayBuffer();
@@ -107,6 +109,17 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
       : Array.isArray(b.pages) ? chunkPages(b.pages as Page[]) : [];
     if (chunks.length === 0) throw new HttpError(400, "Nothing to ingest: send chunks, segments or pages");
     return json({ source: source.id, chunks: await ingest(env, source, chunks) });
+  }
+
+  // a precedent: the jury's written assessment and up to six pictures, from ingest/precedents.ts
+  if (path === "/api/ingest/precedent" && method === "POST") {
+    authorize(request, env);
+    const b = await body(request);
+    let p;
+    try { p = precedent(b.precedent); } catch (e) { throw new HttpError(400, (e as Error).message); }
+    const pics = images(b.images);
+    if (Array.isArray(b.images) && pics.length !== Math.min(b.images.length, 6)) throw new HttpError(400, "Each image must be a JPEG, PNG or WebP data URL under 1.5 MB");
+    return json({ precedent: p.id, ...(await ingestPrecedent(env, p, pics)) });
   }
 
   throw new HttpError(404, "Not found");
