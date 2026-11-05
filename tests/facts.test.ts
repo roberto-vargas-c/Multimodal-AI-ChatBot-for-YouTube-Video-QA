@@ -47,9 +47,10 @@ describe("ingest", () => {
 });
 
 describe("jury", () => {
-  it("searches the juror's work for the project's idea, facade, structure and site", () => {
+  it("searches the juror's work for the project's idea, facade, structure, site and precedents", () => {
     const q = queries({ typology: "school", facade: "brick", storeys: 3, concept: "learning clusters around a court" });
-    expect(q).toHaveLength(4);
+    expect(q).toHaveLength(5);
+    expect(q[4]).toContain("precedent");
     expect(q[0]).toContain("learning clusters");
     expect(q[1]).toContain("brick");
   });

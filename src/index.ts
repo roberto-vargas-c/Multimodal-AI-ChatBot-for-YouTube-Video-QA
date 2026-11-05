@@ -2,7 +2,8 @@
 import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
 import type { ExecutionContext } from "@cloudflare/workers-types";
 import { ask } from "./agent";
-import { jury } from "./jury";
+import { jury, questions, type Answer } from "./jury";
+import { inLibrary, positionsOf, position } from "./positions";
 import { route } from "./router";
 import { transcribe } from "./speech";
 import { allow } from "./llm";
@@ -40,7 +41,10 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
   if (path === "/api/health") return json({ ok: true, model: env.CHAT_MODEL ?? "claude-haiku-5-5", tracing: env.LANGSMITH_TRACING === "true" });
   const owner = isOwner(request, env);
   if (path === "/api/sources" && method === "GET") return json({ sources: await sources(env, owner) });
-  if (path === "/api/authors" && method === "GET") return json({ authors: await authors(env, owner) });
+  if (path === "/api/authors" && method === "GET") {
+    const list = await authors(env, owner);
+    return json({ authors: list.map(a => ({ ...a, positions: positionsOf(a.author) })), positions: inLibrary(list.map(a => a.author)) });
+  }
   if (path === "/api/facts" && method === "GET") return json(await forKeystone(env));
 
   if (path === "/api/transcribe" && method === "POST") {
@@ -56,10 +60,17 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
 
   if (path === "/api/jury" && method === "POST") {
     const b = await body(request);
-    const jurors = Array.isArray(b.jurors) ? (b.jurors as unknown[]).map(String).filter(Boolean).slice(0, 5) : [];
-    if (jurors.length === 0) throw new HttpError(400, "Pick at least one juror (an author from /api/authors)");
-    await budget(env, jurors.length + 1);
-    return json({ route: "jury", ...(await jury(env, { jurors, project: (b.project ?? {}) as ProjectSummary, pitch: str(b.pitch), lang: str(b.lang), owner })) });
+    let jurors = Array.isArray(b.jurors) ? (b.jurors as unknown[]).map(String).filter(Boolean).slice(0, 5) : [];
+    const school = position(str(b.position));
+    // a position alone calls up its authors from the library
+    if (jurors.length === 0 && school) jurors = inLibrary((await authors(env, owner)).map(a => a.author)).find(p => p.id === school.id)?.authors.slice(0, 3) ?? [];
+    if (jurors.length === 0) throw new HttpError(400, "Pick at least one juror (an author from /api/authors) or a position");
+    const answers = Array.isArray(b.answers) ? (b.answers as Json[]).slice(0, 8).map(a => ({ question: String(a.question ?? ""), answer: String(a.answer ?? "") })) as Answer[] : undefined;
+    const input = { jurors, project: (b.project ?? {}) as ProjectSummary, pitch: str(b.pitch), lang: str(b.lang), owner, position: school?.id, answers };
+    // first the jury asks the architect about their intentions; then the crit, with the answers
+    if (str(b.stage) === "questions") { await budget(env); return json({ route: "jury", jurors, questions: await questions(env, input) }); }
+    await budget(env, jurors.length * 2 + 1);
+    return json({ route: "jury", ...(await jury(env, input)) });
   }
 
   // one door for the panel: text or a transcript of speech, sent to the agent or to the jury
@@ -70,7 +81,7 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
     await budget(env);
     const r = mode === "auto" ? await route(env, message) : mode;
     if (r === "jury" && Array.isArray(b.jurors) && b.jurors.length) {
-      await budget(env, b.jurors.length + 1);
+      await budget(env, b.jurors.length * 2 + 1);
       return json({ route: "jury", ...(await jury(env, { jurors: (b.jurors as unknown[]).map(String).slice(0, 5),
         project: (b.project ?? {}) as ProjectSummary, pitch: message, lang: str(b.lang), owner })) });
     }

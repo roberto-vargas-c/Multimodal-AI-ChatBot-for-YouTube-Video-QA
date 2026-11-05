@@ -6,7 +6,7 @@ Ironhack final project (Project III, *Building a Multimodal AI ChatBot for YouTu
 [Keystone](https://github.com/roberto-vargas-c/keystone), a web app that designs buildings. Architecture lectures, competition jury
 sessions and office talks on YouTube, and architecture books, become a searchable library. You ask it questions by text or voice and
 get answers with the minute or page they come from. Or you pick up to three authors from the library as a jury: each judges your
-Keystone project only from their own words, and a chair sums up. Design rules the assistant finds go into Keystone's knowledge base.
+Keystone project only from their own words, through their own concepts. They debate, and a chair sets out where the positions pull apart. Design rules the assistant finds go into Keystone's knowledge base.
 
 | | |
 |---|---|
@@ -40,7 +40,7 @@ Keystone project only from their own words, and a chair sums up. Design rules th
  ┌──────────────────── keystone-jury Worker ─────────────────────┐
  │ /api/transcribe ── Workers AI Whisper                          │
  │ /api/chat ── router ──┬─► Q&A agent (createAgent, 6 tools) ────┼─► Claude Haiku 5.5
- │                       └─► jury graph: jurors ∥ → chair ────────┤
+ │                       └─► jury: jurors ∥ → debate → chair ─────┤
  │ tools: search_sources · get_passage · list_sources ·           │
  │        lookup_facts · get_project · propose_fact               │
  │ memory: D1 (messages per session) · facts and sources: D1      │
@@ -65,9 +65,19 @@ More in [docs/architecture.md](docs/architecture.md).
 | `get_project` | The project open in Keystone: type, place, area, storeys, facade, structure, style, the user's idea |
 | `propose_fact` | Writes a design rule into Keystone's knowledge base, backed by a retrieved passage |
 
-**The jury** is a LangGraph graph: `START → jurors → chair → END`. Each juror runs four searches limited to its own author (the project's
-idea, facade, structure, site), then answers with a structured verdict (approve, approve with changes, reject) and 2-5 reasons, each tied
-to a passage id. A reason citing a passage the juror was not given is dropped. The chair sums up agreement, disagreement and next steps.
+**The jury** is a theoretical crit, not a score. It is a LangGraph graph: `START → hear → debate → sum_up → END` (the debate is
+skipped with one juror).
+- *Hear*: each juror runs five searches limited to its own author (the project's idea, facade, structure, site, and built precedents),
+  states the author's position, and reads the project through 2-5 of the author's concepts: where it embodies each idea and where it
+  misses it. Each reading is tied to a passage id, and to a built precedent where a passage names one. A reading citing a passage the
+  juror was not given is dropped, and so is a precedent on an unknown passage.
+- *Debate*: each juror reads the others and agrees with, challenges or extends up to three of their points, from its own passages.
+- *Sum up*: the chair does not average. It sets out the common ground, the tensions between the positions (left open), the questions
+  the crit leaves the architect, what to explore next, and up to four passages to read next, picked from the ones the jurors had.
+- *Questions first* (`stage: "questions"`): before the crit, the jurors ask the architect about their intentions. The answers go into
+  what every juror reads.
+- *Positions*: `src/positions.ts` groups authors into schools of thought (phenomenology, typology, human-scale urbanism …). Calling up
+  a position seats its authors from the library, and the crit is framed around it.
 
 **Knowledge base.** A fact is stored in Keystone's shape (`category`, question `q`, country, building type, `en`, `value`, `evidence`).
 Its confidence is Keystone's: 1 - Π(1 - weight) over distinct sources, a video counting 0.25 and a book 0.3, × 0.7 when sources
@@ -121,9 +131,9 @@ Hand-written questions in the same format (`eval/dataset.example.jsonl`) can be 
 |---|---|
 | `POST /api/chat` | `{ message, mode?: "auto" \| "ask" \| "jury", sessionId?, project?, jurors?, lang? }`: the router picks |
 | `POST /api/ask` | `{ message, sessionId?, project?, lang?, allowWrites? }` → `{ answer, citations[], facts[], tools[] }` |
-| `POST /api/jury` | `{ jurors[], project, pitch?, lang? }` → `{ jurors[{ juror, verdict, summary, reasons[], passages[] }], chair }` |
+| `POST /api/jury` | `{ jurors[] or position, project, pitch?, answers?[{ question, answer }], stage?: "questions", lang? }` → `{ questions[] }` with `stage: "questions"`, else `{ jurors[{ juror, position, summary, reasons[{ concept, stance, point, passage, precedent? }], replies[], passages[] }], chair{ agree, disagree, tensions[], questions[], next[], reading[] } }` |
 | `POST /api/transcribe` | audio body (webm, ogg, mp3, wav) → `{ text, language }` |
-| `GET /api/sources`, `/api/authors` | the library |
+| `GET /api/sources`, `/api/authors` | the library; `/api/authors` also lists the positions with authors in it |
 | `GET /api/facts` | the facts written into the knowledge base, in Keystone's shape |
 | `POST /api/chunks` | `Bearer INGEST_TOKEN`; `{ ids: ["<source>:<n>"] }`, for the question generator |
 | `POST /api/ingest` | `Bearer INGEST_TOKEN`; `{ source, segments \| pages \| chunks }` |
