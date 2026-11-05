@@ -58,10 +58,13 @@ export async function search(env: Env, query: string, filter: SearchFilter = {},
   const vector = await embeddings(env).embedQuery(query);
   const runs = await Promise.all([false, ...(both ? [true] : [])].map(priv =>
     store(env, priv).similaritySearchVectorWithScore(vector, k, filt)));
-  return runs.flat().map(([doc, score]) => {
-    const m = doc.metadata as ChunkMeta;
-    return { ...citation(chunkId(m.sourceId, m.index), m), text: m.text ?? doc.pageContent, score };
-  }).sort((a, b) => b.score - a.score).slice(0, k);
+  return runs.flat().map(([doc, score]) => toHit(doc, score)).sort((a, b) => b.score - a.score).slice(0, k);
+}
+
+/** LangChain's Vectorize store moves the `text` metadata into pageContent, so the text is put back before the citation is made */
+export function toHit(doc: { metadata: Record<string, unknown>; pageContent: string }, score: number): Hit {
+  const m = { ...doc.metadata, text: doc.pageContent } as ChunkMeta;
+  return { ...citation(chunkId(m.sourceId, m.index), m), text: m.text, score };
 }
 
 /** A chunk with the one before and after it, for when an answer needs more context than the hit itself */
