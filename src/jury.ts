@@ -13,7 +13,7 @@ import { forModel } from "./citations";
 import { position as findPosition } from "./positions";
 import type { Env, ProjectSummary } from "./types";
 
-const Verdict = z.enum(["approve", "approve with changes", "reject"]);
+const Verdict = z.enum(["approve", "approve with changes", "reject"]).default("approve with changes");
 
 const Reading = z.object({
   concept: z.string().describe("The idea from the author's work, in their own terms, e.g. 'the in-between', 'genius loci', 'type'"),
@@ -26,11 +26,11 @@ const Reading = z.object({
   }).optional().describe("Only when a passage names a built example of the idea"),
 });
 
-const JurorAnswer = z.object({
-  position: z.string().describe("The author's theoretical position in one or two sentences, in their own terms"),
+export const JurorAnswer = z.object({
+  position: z.string().default("").describe("The author's theoretical position in one or two sentences, in their own terms"),
   verdict: Verdict,
-  summary: z.string().describe("Two or three sentences in the juror's voice, about this project"),
-  reasons: z.array(Reading).min(1).max(5),
+  summary: z.string().default("").describe("Two or three sentences in the juror's voice, about this project"),
+  reasons: z.array(Reading).default([]).describe("2-5 readings"),
 });
 
 const Replies = z.object({
@@ -40,23 +40,23 @@ const Replies = z.object({
     response: z.enum(["agree", "challenge", "extend"]),
     point: z.string().describe("The reply, in the juror's voice"),
     passage: z.string().describe("The id of one of your own passages that grounds it"),
-  })).max(3),
+  })).default([]).describe("Up to three replies"),
 });
 
-const ChairAnswer = z.object({
+export const ChairAnswer = z.object({
   verdict: Verdict,
-  agree: z.array(z.string()).describe("Common ground: ideas the jurors share about this project"),
-  disagree: z.array(z.string()).describe("Where they differ, naming who"),
+  agree: z.array(z.string()).default([]).describe("Common ground: ideas the jurors share about this project, one or two sentences each"),
+  disagree: z.array(z.string()).default([]).describe("Where they differ, naming who, one or two sentences each"),
   tensions: z.array(z.object({
     question: z.string().describe("The theoretical question at stake, e.g. 'Should the courtyard belong to the school or to the city?'"),
-    sides: z.array(z.object({ juror: z.string(), view: z.string() })).min(2),
-  })).max(3).describe("The real disagreements between positions, left open, not resolved"),
-  questions: z.array(z.string()).max(3).describe("Questions the crit leaves the architect to answer in the design"),
-  next: z.array(z.string()).max(4).describe("What to explore in the design next"),
+    sides: z.array(z.object({ juror: z.string(), view: z.string() })).default([]),
+  })).default([]).describe("Up to three: the real disagreements between positions, left open, not resolved"),
+  questions: z.array(z.string()).default([]).describe("Up to three questions the crit leaves the architect to answer in the design"),
+  next: z.array(z.string()).default([]).describe("Up to four things to explore in the design next"),
   reading: z.array(z.object({
     passage: z.string().describe("The id of a passage to read next"),
     why: z.string().describe("Why it would take the architect's thinking further"),
-  })).max(4),
+  })).default([]).describe("Up to four passages"),
 });
 
 const QuestionsAnswer = z.object({
@@ -64,7 +64,7 @@ const QuestionsAnswer = z.object({
     juror: z.string(),
     question: z.string().describe("A question about the architect's intention, from the juror's own concerns"),
     passage: z.string().describe("The id of the passage it comes from"),
-  })).max(6),
+  })).default([]).describe("One or two per juror"),
 });
 
 type Reason = z.infer<typeof Reading>;
@@ -127,8 +127,8 @@ async function judge(env: Env, juror: string, input: JuryInput): Promise<JurorRe
   if (passages.length === 0)
     return { juror, verdict: "approve with changes", summary: `There is nothing by ${juror} in the library to judge from.`, ...empty };
 
-  const model = chatModel(env, { maxTokens: 1600 }).withStructuredOutput(JurorAnswer, { name: "crit" });
-  const out = await model.invoke([
+  const model = chatModel(env, { maxTokens: 6000 }).withStructuredOutput(JurorAnswer, { name: "crit" });
+  const out = JurorAnswer.parse(await model.invoke([
     { role: "system", content: [
       `You sit on a theoretical architecture crit as ${juror}. You speak only from the passages below, which are ${juror}'s own`,
       "words from lectures, talks and books. Stay faithful to them: do not claim views they do not express.", stance(input),
@@ -139,18 +139,18 @@ async function judge(env: Env, juror: string, input: JuryInput): Promise<JurorRe
       `Still give an overall verdict. Write in ${language(input.lang)}.`,
     ].join(" ") },
     { role: "user", content: `${brief(input)}\n\nPASSAGES\n` + passages.map(h => forModel(h, h.text)).join("\n\n") },
-  ], { runName: `juror: ${juror}`, tags: ["jury", "juror"] });
+  ], { runName: `juror: ${juror}`, tags: ["jury", "juror"] }));
   // a reason that cites a passage the juror was not given is dropped, so every point the user sees is grounded
   const known = (id: string) => passages.some(h => h.chunkId === id);
-  const reasons = grounded(out.reasons, known);
+  const reasons = grounded(out.reasons, known).slice(0, 5);
   return { juror, ...out, reasons, replies: [], passages, dropped: out.reasons.length - reasons.length };
 }
 
 /** The second round: a juror reads the others' readings and answers up to three of them, from their own passages */
 async function reply(env: Env, me: JurorResult, others: JurorResult[], input: JuryInput): Promise<Reply[]> {
   if (!me.reasons.length || !others.some(o => o.reasons.length)) return [];
-  const model = chatModel(env, { maxTokens: 900 }).withStructuredOutput(Replies, { name: "replies" });
-  const out = await model.invoke([
+  const model = chatModel(env, { maxTokens: 4000 }).withStructuredOutput(Replies, { name: "replies" });
+  const out = Replies.parse(await model.invoke([
     { role: "system", content: [
       `You are ${me.juror} in the second round of a theoretical architecture crit. You have heard the other jurors.`,
       "Answer up to three of their points: agree, challenge or extend them, from your own position and only from your own passages below.",
@@ -160,9 +160,9 @@ async function reply(env: Env, me: JurorResult, others: JurorResult[], input: Ju
     { role: "user", content: `${brief(input)}\n\nYOUR POSITION\n${me.position}\n\nTHE OTHER JURORS\n` +
       others.filter(o => o.reasons.length).map(o => `${o.juror}: ${o.position}\n` + o.reasons.map(r => `- [${r.stance}] ${r.concept}: ${r.point}`).join("\n")).join("\n\n") +
       "\n\nYOUR PASSAGES\n" + me.passages.map(h => forModel(h, h.text)).join("\n\n") },
-  ], { runName: `debate: ${me.juror}`, tags: ["jury", "debate"] });
+  ], { runName: `debate: ${me.juror}`, tags: ["jury", "debate"] }));
   const names = new Set(others.map(o => o.juror));
-  return out.replies.filter(r => names.has(r.to) && me.passages.some(h => h.chunkId === r.passage));
+  return out.replies.filter(r => names.has(r.to) && me.passages.some(h => h.chunkId === r.passage)).slice(0, 3);
 }
 
 const State = Annotation.Root({
@@ -190,8 +190,8 @@ export function juryGraph(env: Env) {
       const heard = s.jurors.filter(j => j.reasons.length > 0);
       if (heard.length === 0) return { chair: null };
       const pool = new Map(heard.flatMap(j => j.passages).map(h => [h.chunkId, h]));
-      const model = chatModel(env, { maxTokens: 1400 }).withStructuredOutput(ChairAnswer, { name: "chair" });
-      const out = await model.invoke([
+      const model = chatModel(env, { maxTokens: 8000 }).withStructuredOutput(ChairAnswer, { name: "chair" });
+      const out = ChairAnswer.parse(await model.invoke([
         { role: "system", content: [
           "You chair a theoretical architecture crit. Do not average the jurors into one opinion. Set out the common ground,",
           "then the tensions: the real theoretical questions on which their positions pull apart, each side in the juror's terms, left open.",
@@ -201,9 +201,9 @@ export function juryGraph(env: Env) {
         ].join(" ") },
         { role: "user", content: `${brief(s.input)}\n\nTHE CRIT\n${transcript(heard)}\n\nPASSAGES TO RECOMMEND\n` +
           [...pool.values()].map(h => `[${h.chunkId}] ${h.author}, "${h.title}", ${h.where}: ${h.text.slice(0, 200)}`).join("\n") },
-      ], { runName: "chair", tags: ["jury", "chair"] });
-      const reading = out.reading.flatMap(r => { const h = pool.get(r.passage); return h ? [{ ...h, why: r.why }] : []; });
-      return { chair: { ...out, reading } };
+      ], { runName: "chair", tags: ["jury", "chair"] }));
+      const reading = out.reading.flatMap(r => { const h = pool.get(r.passage); return h ? [{ ...h, why: r.why }] : []; }).slice(0, 4);
+      return { chair: { ...out, tensions: out.tensions.filter(x => x.sides.length >= 2).slice(0, 3), questions: out.questions.slice(0, 3), next: out.next.slice(0, 4), reading } };
     })
     .addEdge(START, "hear")
     .addConditionalEdges("hear", s => s.jurors.filter(j => j.reasons.length).length > 1 ? "debate" : "sum_up", ["debate", "sum_up"])
@@ -227,8 +227,8 @@ export async function questions(env: Env, input: JuryInput): Promise<Question[]>
   const found = await Promise.all(input.jurors.map(async j => ({ juror: j, passages: await gather(env, j, input, 5) })));
   const heard = found.filter(f => f.passages.length);
   if (!heard.length) return [];
-  const model = chatModel(env, { maxTokens: 900 }).withStructuredOutput(QuestionsAnswer, { name: "questions" });
-  const out = await model.invoke([
+  const model = chatModel(env, { maxTokens: 3000 }).withStructuredOutput(QuestionsAnswer, { name: "questions" });
+  const out = QuestionsAnswer.parse(await model.invoke([
     { role: "system", content: [
       "Before a theoretical architecture crit, each juror below asks the architect one or two questions about their intentions,",
       "the kind that make them state a position: what the building wants to be, for whom, and how it meets the city and the site.",
@@ -236,10 +236,10 @@ export async function questions(env: Env, input: JuryInput): Promise<Question[]>
       stance(input), `Write in ${language(input.lang)}.`,
     ].join(" ") },
     { role: "user", content: `${brief(input)}\n\n` + heard.map(f => `JUROR ${f.juror}\n` + f.passages.map(h => forModel(h, h.text)).join("\n\n")).join("\n\n") },
-  ], { runName: "jury questions", tags: ["jury", "questions"] });
+  ], { runName: "jury questions", tags: ["jury", "questions"] }));
   const all = new Map(heard.flatMap(f => f.passages).map(h => [h.chunkId, h]));
   return out.questions.flatMap(q => {
     const h = all.get(q.passage);
     return h && h.author === q.juror ? [{ ...q, where: h.where, title: h.title }] : h ? [{ ...q, juror: h.author, where: h.where, title: h.title }] : [];
-  });
+  }).slice(0, 6);
 }

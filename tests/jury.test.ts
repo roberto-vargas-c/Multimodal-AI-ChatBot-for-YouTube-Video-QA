@@ -101,3 +101,15 @@ describe("positions", () => {
     expect(positionsOf("Colin Rowe")).toEqual(["typology", "postmodern"]);
   });
 });
+
+describe("answers the model cuts short", () => {
+  it("a chair with only its first fields still parses, the rest empty", async () => {
+    const { ChairAnswer, JurorAnswer } = await import("../src/jury");
+    // the shape of the failure seen live: verdict, agree and disagree, nothing after
+    const c = ChairAnswer.parse({ verdict: "approve with changes", agree: ["a"], disagree: ["d"] });
+    expect(c).toMatchObject({ tensions: [], questions: [], next: [], reading: [] });
+    expect(JurorAnswer.parse({}).reasons).toEqual([]);
+    // more items than asked for are not an error either
+    expect(ChairAnswer.parse({ questions: ["1", "2", "3", "4", "5"] }).questions).toHaveLength(5);
+  });
+});
