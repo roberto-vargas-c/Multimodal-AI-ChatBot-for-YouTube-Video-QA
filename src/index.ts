@@ -2,7 +2,7 @@
 import { awaitAllCallbacks } from "@langchain/core/callbacks/promises";
 import type { ExecutionContext } from "@cloudflare/workers-types";
 import { ask } from "./agent";
-import { jury, questions, type Answer } from "./jury";
+import { jury, questions, views, type Answer } from "./jury";
 import { inLibrary, positionsOf, position } from "./positions";
 import { route } from "./router";
 import { transcribe } from "./speech";
@@ -66,7 +66,7 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
     if (jurors.length === 0 && school) jurors = inLibrary((await authors(env, owner)).map(a => a.author)).find(p => p.id === school.id)?.authors.slice(0, 3) ?? [];
     if (jurors.length === 0) throw new HttpError(400, "Pick at least one juror (an author from /api/authors) or a position");
     const answers = Array.isArray(b.answers) ? (b.answers as Json[]).slice(0, 8).map(a => ({ question: String(a.question ?? ""), answer: String(a.answer ?? "") })) as Answer[] : undefined;
-    const input = { jurors, project: (b.project ?? {}) as ProjectSummary, pitch: str(b.pitch), lang: str(b.lang), owner, position: school?.id, answers };
+    const input = { jurors, project: (b.project ?? {}) as ProjectSummary, pitch: str(b.pitch), lang: str(b.lang), owner, position: school?.id, answers, views: views(b.views) };
     // first the jury asks the architect about their intentions; then the crit, with the answers
     if (str(b.stage) === "questions") { await budget(env); return json({ route: "jury", jurors, questions: await questions(env, input) }); }
     await budget(env, jurors.length * 2 + 1);
