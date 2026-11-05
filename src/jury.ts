@@ -66,6 +66,20 @@ export const ChairAnswer = z.object({
   })).default([]).describe("Up to four passages"),
 });
 
+// The image critic: reads the views of the model as drawings, not as a building. The criteria follow what drawing prizes publicly
+// say they judge on (originality, the use of the medium, how well the image tells its intent, its impact), in our own words.
+export const CRITERIA = ["originality", "medium", "intent", "impact"] as const;
+export const DrawingAnswer = z.object({
+  criteria: z.array(z.object({
+    criterion: z.enum(CRITERIA),
+    score: z.number().min(1).max(5).describe("1 weak … 5 outstanding"),
+    point: z.string().describe("What in the pictures earns the score, concretely: which view, where in it"),
+  })).default([]).describe("One per criterion"),
+  summary: z.string().default("").describe("Two or three sentences: what the images say about the project, and what they fail to say"),
+  improve: z.array(z.string()).default([]).describe("Up to three concrete changes to the views (viewpoint, light, people, line weight, crop, what to leave out)"),
+});
+export type Drawing = z.infer<typeof DrawingAnswer>;
+
 const QuestionsAnswer = z.object({
   questions: z.array(z.object({
     juror: z.string(),
@@ -79,7 +93,7 @@ export type Reply = z.infer<typeof Replies>["replies"][number];
 export type Comparison = z.infer<typeof JurorAnswer>["comparisons"][number];
 export type JurorResult = Omit<z.infer<typeof JurorAnswer>, "reasons" | "comparisons"> & { juror: string; reasons: Reason[]; comparisons: Comparison[]; replies: Reply[]; passages: Hit[]; dropped: number };
 export type Chair = Omit<z.infer<typeof ChairAnswer>, "reading"> & { reading: (Hit & { why: string })[] };
-export type JuryResult = { jurors: JurorResult[]; chair: Chair | null; position?: string; precedents?: Shown[] };
+export type JuryResult = { jurors: JurorResult[]; chair: Chair | null; position?: string; precedents?: Shown[]; drawing?: Drawing };
 export type Question = z.infer<typeof QuestionsAnswer>["questions"][number] & { where?: string; title?: string };
 
 export interface Answer { question: string; answer: string }
@@ -214,8 +228,28 @@ async function reply(env: Env, me: JurorResult, others: JurorResult[], input: Ju
   return out.replies.filter(r => names.has(r.to) && me.passages.some(h => h.chunkId === r.passage)).slice(0, 3);
 }
 
+/** The image critic: one call that judges the views as images, only when there are views */
+async function look(env: Env, input: JuryInput): Promise<Drawing | undefined> {
+  if (!input.views?.length) return undefined;
+  const model = chatModel(env, { maxTokens: 3000 }).withStructuredOutput(DrawingAnswer, { name: "drawing" });
+  const out = DrawingAnswer.parse(await model.invoke([
+    { role: "system", content: [
+      "You judge architectural images as drawings, the way a drawing prize jury does, not the building's design.",
+      "Score each criterion from 1 to 5 and say concretely what in the pictures earns it:",
+      "originality (of approach, style or content); medium (how the technique and graphic quality are used: line, light, colour, composition);",
+      "intent (how well the image communicates the architect's idea and the life of the place); impact (whether it would stop a jury at a wall of boards).",
+      "Judge only what the views show, against the architect's idea in the brief. Be frank: rendered model views often score low on originality.",
+      "Then up to three concrete changes to the views.", `Write in ${language(input.lang)}.`,
+    ].join(" ") },
+    { role: "user", content: withViews(brief({ ...input, precedents: undefined }), input.views) },
+  ], { runName: "image critic", tags: ["jury", "drawing"] }));
+  const seen = new Set<string>();
+  return { ...out, criteria: out.criteria.filter(c => !seen.has(c.criterion) && seen.add(c.criterion)), improve: out.improve.slice(0, 3) };
+}
+
 const State = Annotation.Root({
   input: Annotation<JuryInput>(),
+  drawing: Annotation<Drawing | undefined>(),
   jurors: Annotation<JurorResult[]>({ reducer: (_, b) => b, default: () => [] }),
   chair: Annotation<JuryResult["chair"]>(),
 });
@@ -232,7 +266,10 @@ export function transcript(jurors: JurorResult[]): string {
 
 export function juryGraph(env: Env) {
   return new StateGraph(State)
-    .addNode("hear", async s => ({ jurors: await Promise.all(s.input.jurors.map(j => judge(env, j, s.input))) }))
+    .addNode("hear", async s => {
+      const [jurors, drawing] = await Promise.all([Promise.all(s.input.jurors.map(j => judge(env, j, s.input))), look(env, s.input).catch(() => undefined)]);
+      return { jurors, drawing };
+    })
     .addNode("debate", async s => ({
       jurors: await Promise.all(s.jurors.map(async j => ({ ...j, replies: await reply(env, j, s.jurors.filter(o => o !== j), s.input) }))),
     }))
@@ -250,7 +287,7 @@ export function juryGraph(env: Env) {
           "Where the brief gives the programme, the site context or views, check what the jurors say against them.",
           `Write in ${language(s.input.lang)}.`,
         ].join(" ") },
-        { role: "user", content: withViews(`${brief(s.input)}\n\nTHE CRIT\n${transcript(heard)}\n\nPASSAGES TO RECOMMEND\n` +
+        { role: "user", content: withViews(`${brief(s.input)}\n\nTHE CRIT\n${transcript(heard)}${s.drawing ? `\n\nTHE IMAGE CRITIC (on the views as drawings)\n${s.drawing.criteria.map(c => `- ${c.criterion} ${c.score}/5: ${c.point}`).join("\n")}\n${s.drawing.summary}` : ""}\n\nPASSAGES TO RECOMMEND\n` +
           [...pool.values()].map(h => `[${h.chunkId}] ${h.author}, "${h.title}", ${h.where}: ${h.text.slice(0, 200)}`).join("\n"), s.input.views, s.input.precedents) },
       ], { runName: "chair", tags: ["jury", "chair"] }));
       const reading = out.reading.flatMap(r => { const h = pool.get(r.passage); return h ? [{ ...h, why: r.why }] : []; }).slice(0, 4);
@@ -275,7 +312,8 @@ export async function jury(env: Env, input: JuryInput): Promise<JuryResult> {
   // the precedents a juror compared the project with are shown with their picture
   const used = new Set(jurors.flatMap(j => j.comparisons.map(c => c.precedent)));
   const shown = precedents.filter(p => used.has(p.id));
-  return { jurors, chair: out.chair ?? null, ...(input.position ? { position: input.position } : {}), ...(shown.length ? { precedents: shown } : {}) };
+  return { jurors, chair: out.chair ?? null, ...(input.position ? { position: input.position } : {}), ...(shown.length ? { precedents: shown } : {}),
+    ...(out.drawing ? { drawing: out.drawing } : {}) };
 }
 
 /** Before the crit: each juror asks the architect about their intention, from what that juror cares about. One model call. */

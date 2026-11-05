@@ -71,7 +71,7 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
     const input = { jurors, project: (b.project ?? {}) as ProjectSummary, pitch: str(b.pitch), lang: str(b.lang), owner, position: school?.id, answers, views: views(b.views) };
     // first the jury asks the architect about their intentions; then the crit, with the answers
     if (str(b.stage) === "questions") { await budget(env); return json({ route: "jury", jurors, questions: await questions(env, input) }); }
-    await budget(env, jurors.length * 2 + 1);
+    await budget(env, jurors.length * 2 + 1 + (input.views ? 1 : 0));    // + the image critic when there are views
     return json({ route: "jury", ...(await jury(env, input)) });
   }
 

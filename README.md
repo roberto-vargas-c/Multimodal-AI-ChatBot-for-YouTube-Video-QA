@@ -79,6 +79,11 @@ skipped with one juror).
 - *Positions*: `src/positions.ts` groups authors into schools of thought (phenomenology, typology, human-scale urbanism …). Calling up
   a position seats its authors from the library, and the crit is framed around it.
 
+**The image critic.** When Keystone sends views of the model, one more call judges them as drawings rather than as a building,
+the way a drawing prize jury does: originality, use of the medium, how well the image tells the architect's intent, and impact,
+each scored 1-5 with what in the picture earns it, plus up to three changes to the views (`drawing` in the result). The chair
+reads it with the crit. It costs one paid call per crit with views, counted in the daily cap.
+
 **Precedents: pictures with a jury's comments.** Next to the authors, the library can hold *precedents*: entries (a competition
 entry, a built work) with up to six pictures and the written assessment a real jury gave them. The jury's text is embedded like a
 book page (kind `precedent`), so the crit finds the entries closest to the project by meaning; the pictures are kept in D1,

@@ -26,7 +26,9 @@ vi.mock("../src/llm", () => ({
           reading: [{ passage: "gehl:1", why: "w" }, { passage: "nowhere:2", why: "w" }] };
         if (name === "questions") return { questions: [{ juror: "Jan Gehl", question: "For whom is the courtyard?", passage: "gehl:1" },
           { juror: "Jan Gehl", question: "made up", passage: "nowhere:3" }] };
-        throw new Error(name);
+        if (name === "drawing") return { summary: "s", improve: ["a", "b", "c", "d"], criteria: [
+          { criterion: "medium", score: 3, point: "flat light" }, { criterion: "medium", score: 5, point: "again" }, { criterion: "intent", score: 2, point: "no people" }] };
+                throw new Error(name);
       },
     }),
   }),
@@ -88,6 +90,18 @@ describe("the theoretical crit", () => {
     const r2 = await jury(env, { jurors: ["Jan Gehl"], project, precedents: [] });
     expect(r2.jurors[0].comparisons).toEqual([]);
     expect(r2.precedents).toBeUndefined();
+  });
+
+  it("judges the views as drawings only when there are views", async () => {
+    calls.length = 0;
+    const r = await jury(env, { jurors: ["Jan Gehl"], project });
+    expect(calls).not.toContain("drawing");
+    expect(r.drawing).toBeUndefined();
+    calls.length = 0;
+    const v = await jury(env, { jurors: ["Jan Gehl"], project, precedents: [], views: [{ label: "Bird's eye", url: "data:image/jpeg;base64,AAAA" }] });
+    expect(calls.sort()).toEqual(["chair", "crit", "drawing"]);
+    expect(v.drawing?.criteria.map(c => `${c.criterion} ${c.score}`)).toEqual(["medium 3", "intent 2"]);   // one per criterion
+    expect(v.drawing?.improve).toHaveLength(3);
   });
 
   it("goes on without precedents when none can be found", async () => {
