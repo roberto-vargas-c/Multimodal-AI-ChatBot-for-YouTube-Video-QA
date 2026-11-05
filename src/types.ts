@@ -72,5 +72,35 @@ export interface ProjectSummary {
   materials?: string[];
   landscape?: string;
   concept?: string;                // the user's own words about the idea
+  programme?: Programme;           // the room programme and what the ground floor holds
+  context?: SiteContext;           // what is around the site: streets, neighbours, open space
   [key: string]: unknown;
 }
+
+/** The room programme as the massing places it: the uses with their floors, and the uses on the ground floor */
+export interface Programme {
+  netArea?: number;
+  rooms?: number;
+  uses?: { use: string; floors?: string; zone?: string; net?: number; rooms?: number }[];
+  groundFloor?: string[];          // "Emergency department 4,210 m²", largest first
+  largestRooms?: string[];
+  buildings?: string[];            // a masterplan: each building with its storeys, area and uses
+  entrances?: string[];
+  notes?: string;
+  [key: string]: unknown;
+}
+
+/** The site's surroundings, measured from the plot: each with its distance and the side of the plot it lies on */
+export interface SiteContext {
+  plot?: string;
+  streets?: string[];
+  neighbours?: string;
+  closest?: string[];
+  openSpace?: string[];
+  trees?: string;
+  notes?: string;
+  [key: string]: unknown;
+}
+
+/** A picture of the model the jury looks at: a data URL (JPEG, PNG or WebP) and what it shows */
+export interface View { label: string; url: string }
