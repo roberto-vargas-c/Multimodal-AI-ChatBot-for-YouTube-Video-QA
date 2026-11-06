@@ -5,7 +5,7 @@ import { ask } from "./agent";
 import { jury, questions, views, type Answer } from "./jury";
 import { inLibrary, positionsOf, position } from "./positions";
 import { route } from "./router";
-import { transcribe } from "./speech";
+import { MAX_AUDIO, transcribe } from "./speech";
 import { allow } from "./llm";
 import { ingest, sources, authors } from "./store";
 import { forKeystone } from "./facts";
@@ -22,6 +22,11 @@ export default {
     if (!url.pathname.startsWith("/api/")) return Response.redirect(`${(env.KEYSTONE_URL ?? "https://keystone.robert-en-var.workers.dev").replace(/\/$/, "")}/app#/project/jury`, 302);
     const cors = corsHeaders(request, env);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    // a burst limit per address on the paid routes, before any work: requests over it are refused, never billed further
+    if (request.method === "POST" && env.LIMITER && !isOwner(request, env)) {
+      const { success } = await env.LIMITER.limit({ key: limitKey(request, env) });
+      if (!success) return json({ error: "Too many requests. Please wait a minute and try again." }, 429, cors);
+    }
     try {
       const res = await handle(request, url, env);
       for (const [k, v] of Object.entries(cors)) res.headers.set(k, v);
@@ -51,13 +56,17 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
 
   if (path === "/api/transcribe" && method === "POST") {
     const audio = await request.arrayBuffer();
+    if (audio.byteLength > MAX_AUDIO) throw new HttpError(413, "Recording too long: at most 5 MB");
+    await budget(env);
     return json(await transcribe(env, audio, url.searchParams.get("lang") ?? undefined));
   }
 
   if (path === "/api/ask" && method === "POST") {
     const b = await body(request);
     await budget(env);
-    return json({ route: "ask", ...(await ask(env, { ...askInput(b), owner })) });
+    const a = await ask(env, { ...askInput(b), owner });
+    await allow(env, a.calls - 1);              // the agent's further model calls count too (up to RUN_LIMIT per question)
+    return json({ route: "ask", ...a });
   }
 
   if (path === "/api/jury" && method === "POST") {
@@ -134,6 +143,15 @@ function askInput(b: Json) {
 
 async function budget(env: Env, calls = 1) {
   if (!(await allow(env, calls))) throw new HttpError(429, "The assistant has reached today's limit. Please try again tomorrow.");
+}
+
+/** Who a request counts against for the per-minute limit: Keystone forwards every visitor from its own address, so with the bot
+ *  token it names the visitor (X-Keystone-Client); anyone else counts by the address they call from */
+export function limitKey(request: Request, env: Env): string {
+  const client = request.headers.get("x-keystone-client");
+  if (client && env.KEYSTONE_BOT_TOKEN && env.KEYSTONE_BOT_TOKEN.length >= 16 && request.headers.get("x-keystone-bot") === env.KEYSTONE_BOT_TOKEN)
+    return `keystone:${client}`;
+  return request.headers.get("cf-connecting-ip") ?? "unknown";
 }
 
 /** The owner (OWNER_TOKEN or INGEST_TOKEN) also searches the private index; everyone else only the public one */

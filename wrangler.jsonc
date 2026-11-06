@@ -10,6 +10,9 @@
   "vectorize": [{ "binding": "VECTORIZE", "index_name": "keystone-jury" }, { "binding": "VECTORIZE_PRIVATE", "index_name": "keystone-jury-private" }],
   "d1_databases": [{ "binding": "DB", "database_name": "keystone-jury", "database_id": "REPLACE_WITH_ID_FROM_wrangler_d1_create", "migrations_dir": "migrations" }],
   "observability": { "enabled": true },
+  // at most 20 POSTs (questions, crits, recordings) per minute from one visitor: Keystone names each visitor when it holds
+  // KEYSTONE_BOT_TOKEN, otherwise all of Keystone counts as its one address. The daily cap on paid calls is AI_PER_DAY.
+  "ratelimits": [{ "name": "LIMITER", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }],
   "vars": {
     "CHAT_MODEL": "claude-haiku-5-5",
     "AI_PER_DAY": "300",

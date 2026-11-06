@@ -14,7 +14,12 @@ import type { Env, ProjectSummary } from "./types";
 const MEMORY = 12;   // messages of earlier turns the agent sees
 
 export interface AskInput { sessionId: string; message: string; project?: ProjectSummary; lang?: string; allowWrites?: boolean; owner?: boolean }
-export interface AskOutput { answer: string; citations: Hit[]; facts: unknown[]; tools: string[] }
+export interface AskOutput { answer: string; citations: Hit[]; facts: unknown[]; tools: string[]; calls: number }
+
+/** The model's turns in a run (one paid call each), for the day's budget: the agent may take up to RUN_LIMIT of them per question */
+export const RUN_LIMIT = 6;
+export const modelCalls = (messages: { type?: string; getType?: () => string }[]) =>
+  Math.max(1, messages.filter(m => (m.type ?? m.getType?.()) === "ai").length);
 
 function tools(env: Env, input: AskInput, seen: Map<string, Hit>, written: unknown[], used: string[]) {
   const remember = (hits: Hit[]) => { for (const h of hits) seen.set(h.chunkId, h); return hits; };
@@ -127,7 +132,7 @@ export async function ask(env: Env, input: AskInput): Promise<AskOutput> {
     model: chatModel(env),
     tools: tools(env, input, seen, written, used),
     systemPrompt: systemPrompt(input),
-    middleware: [modelCallLimitMiddleware({ runLimit: 6, exitBehavior: "end" })],
+    middleware: [modelCallLimitMiddleware({ runLimit: RUN_LIMIT, exitBehavior: "end" })],
   });
   const result = await agent.invoke({ messages: [...history, new HumanMessage(input.message)] },
     { runName: "keystone-jury-ask", metadata: { sessionId: input.sessionId }, tags: ["ask"] });
@@ -135,5 +140,5 @@ export async function ask(env: Env, input: AskInput): Promise<AskOutput> {
   await memory.addMessages([new HumanMessage(input.message), new AIMessage(answer)]);
   const cited = [...answer.matchAll(/\[([^\]\s]+:\d+)\]/g)].map(m => m[1]);
   const citations = [...new Set(cited)].map(id => seen.get(id)).filter((h): h is Hit => !!h);
-  return { answer, citations, facts: written, tools: used };
+  return { answer, citations, facts: written, tools: used, calls: modelCalls(result.messages.slice(history.length + 1) as never) };
 }
