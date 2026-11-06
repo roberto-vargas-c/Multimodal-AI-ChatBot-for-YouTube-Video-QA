@@ -84,6 +84,15 @@ the way a drawing prize jury does: originality, use of the medium, how well the 
 each scored 1-5 with what in the picture earns it, plus up to three changes to the views (`drawing` in the result). The chair
 reads it with the crit. It costs one paid call per crit with views, counted in the daily cap.
 
+**Massing moves.** Each juror also proposes up to three changes to the form of the building (`moves` on the juror, and all of
+them once each in `moves` on the result, with the juror who proposed them): "Lower the north wing by two floors", "Open the
+courtyard to the street". A move is tied to one of the juror's concepts and grounded in a passage (one on an unknown passage is
+dropped), and is given in the terms of Keystone's massing operations where it can be: `add_floors` / `remove_floors` (`floors`),
+`push` / `pull` a face on a `side` by `metres` on a `range` of floors, `step_back` the top `floors` floors from a `side` by
+`metres`. Anything else is `other`, with its `side` when it has one, and Keystone shows it as text with that side highlighted. The
+jurors read the form from the `massing` part of the project (its sides with their facade length and storeys), which Keystone
+sends. `src/moves.ts` has the schema and the checks: a push without a side or a change of floors without a number becomes `other`.
+
 **Precedents: pictures with a jury's comments.** Next to the authors, the library can hold *precedents*: entries (a competition
 entry, a built work) with up to six pictures and the written assessment a real jury gave them. The jury's text is embedded like a
 book page (kind `precedent`), so the crit finds the entries closest to the project by meaning; the pictures are kept in D1,

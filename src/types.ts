@@ -74,6 +74,7 @@ export interface ProjectSummary {
   concept?: string;                // the user's own words about the idea
   programme?: Programme;           // the room programme and what the ground floor holds
   context?: SiteContext;           // what is around the site: streets, neighbours, open space
+  massing?: MassingSummary;        // the form as built now, side by side, so the jury can propose moves on it
   [key: string]: unknown;
 }
 
@@ -87,6 +88,19 @@ export interface Programme {
   buildings?: string[];            // a masterplan: each building with its storeys, area and uses
   entrances?: string[];
   notes?: string;
+  [key: string]: unknown;
+}
+
+/** The form as Keystone builds it now: its kind, floors and size, and each side (north up) with its facade and storeys */
+export interface MassingSummary {
+  form?: string;                   // "Courtyard block", "Bar", "Custom shape" …
+  floors?: number;
+  height?: number;
+  footprint?: string;              // "62 × 38 m, 2,356 m²"
+  courts?: number;
+  sides?: Record<string, string>;  // north: "62 m of facade, 6 storeys (21 m)"
+  buildings?: string[];            // a masterplan: each building with where it stands on the plot
+  editable?: string[];             // the moves Keystone can preview and apply on this project
   [key: string]: unknown;
 }
 

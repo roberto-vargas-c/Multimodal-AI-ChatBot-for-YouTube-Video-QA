@@ -16,7 +16,12 @@ vi.mock("../src/llm", () => ({
             { concept: "invented", stance: "concern", point: "p", passage: "nowhere:9" },
             { concept: "type", stance: "concern", point: "p", passage: id, precedent: { building: "made up", passage: "nowhere:1" } },
           ],
-          comparisons: [{ precedent: "school-2025-2", point: "its yard opens to the street, this one turns away" }, { precedent: "made-up", point: "x" }] };
+          comparisons: [{ precedent: "school-2025-2", point: "its yard opens to the street, this one turns away" }, { precedent: "made-up", point: "x" }],
+          moves: [
+            { title: "Lower the north wing by two floors", action: "step_back", side: "north", floors: 2, metres: 12, concept: "edges", why: "w", passage: id },
+            { title: "Made up", action: "pull", side: "east", metres: 3, concept: "x", why: "w", passage: "nowhere:4" },
+            { title: "Open the courtyard to the street", action: "other", side: "south", concept: "edges", why: "w", passage: id },
+          ] };
         if (name === "replies") return { replies: [
           { to: me === "Jan Gehl" ? "Aldo Rossi" : "Jan Gehl", concept: "edges", response: "challenge", point: "r", passage: id },
           { to: "Somebody else", concept: "x", response: "agree", point: "r", passage: id },
@@ -59,6 +64,14 @@ describe("the theoretical crit", () => {
     expect(gehl.passages.map(h => h.chunkId)).toEqual(["gehl:1"]);
     expect(r.chair?.tensions[0].sides).toHaveLength(2);
     expect(r.chair?.reading.map(h => h.chunkId)).toEqual(["gehl:1"]);      // reading only from passages the jurors had
+  });
+
+  it("returns the jurors' massing moves, grounded, once each, with who proposed them", async () => {
+    const r = await jury(env, { jurors: ["Jan Gehl", "Aldo Rossi"], project });
+    const gehl = r.jurors.find(j => j.juror === "Jan Gehl")!;
+    expect(gehl.moves.map(m => m.title)).toEqual(["Lower the north wing by two floors", "Open the courtyard to the street"]);   // the ungrounded one is gone
+    // both jurors propose the same two moves: the list keeps each once, from the first juror
+    expect(r.moves.map(m => `${m.juror}: ${m.action} ${m.side}`)).toEqual(["Jan Gehl: step_back north", "Jan Gehl: other south"]);
   });
 
   it("skips the debate with one juror", async () => {
@@ -113,6 +126,28 @@ describe("the theoretical crit", () => {
   it("grounded keeps a point whose precedent is unknown, without the precedent", () => {
     const r = grounded([{ concept: "c", stance: "praise", point: "p", passage: "a", precedent: { building: "b", passage: "z" } }], id => id === "a");
     expect(r).toEqual([{ concept: "c", stance: "praise", point: "p", passage: "a", precedent: undefined }]);
+  });
+});
+
+describe("massing moves", () => {
+  const known = (id: string) => id === "a:1";
+  const base = { concept: "c", why: "w", passage: "a:1" };
+  it("keeps what Keystone can apply, and turns an incomplete move into text", async () => {
+    const { cleanMoves } = await import("../src/moves");
+    const r = cleanMoves([
+      { ...base, title: "Two floors less", action: "remove_floors", floors: -2.4 },
+      { ...base, title: "Pull the south face out", action: "pull", side: "south", metres: 400 },
+      { ...base, title: "Push in somewhere", action: "push", metres: 3 },
+      { ...base, title: "Step back", action: "step_back", side: "all", floors: 1, metres: 3 },
+    ], known, 5);
+    expect(r.map(m => [m.action, m.floors, m.metres])).toEqual([["remove_floors", 2, undefined], ["pull", undefined, 40], ["other", undefined, 3], ["other", 1, 3]]);
+    expect(cleanMoves([{ ...base, title: "x", action: "other", passage: "b:1" }], known)).toEqual([]);
+  });
+  it("tells the jurors the massing", () => {
+    const b = brief({ project: { ...project, massing: { form: "Bar", floors: 5, sides: { north: "60 m, 5 storeys" } } } });
+    expect(b).toContain("MASSING");
+    expect(b).toContain("60 m, 5 storeys");
+    expect(b).not.toMatch(/PROJECT[^]*"massing"/);
   });
 });
 

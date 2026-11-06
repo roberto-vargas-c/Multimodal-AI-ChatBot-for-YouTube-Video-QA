@@ -6,7 +6,8 @@
 // out the tensions, the questions they leave the architect, and what to read next. Before all that the jury can ask the
 // architect about their intentions (`questions`), and the answers go into the crit. Next to the views of the model the jurors
 // see up to two precedents: entries a real jury has judged, with their lead picture and that jury's written assessment, and
-// compare the project with them through their own concepts.
+// compare the project with them through their own concepts. Each juror also proposes up to three massing moves (moves.ts): concrete
+// changes to the form, tied to a concept and a passage, which Keystone previews and applies where they map onto its operations.
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { z } from "zod";
 import { chatModel } from "./llm";
@@ -14,6 +15,7 @@ import { search, type Hit } from "./store";
 import { forModel } from "./citations";
 import { position as findPosition } from "./positions";
 import { findPrecedents, forModel as precedentText, type Shown } from "./precedents";
+import { allMoves, cleanMoves, MoveSchema, PROPOSE, type JurorMove, type Move } from "./moves";
 import type { Env, ProjectSummary, View } from "./types";
 
 const Verdict = z.enum(["approve", "approve with changes", "reject"]).default("approve with changes");
@@ -38,6 +40,7 @@ export const JurorAnswer = z.object({
     precedent: z.string().describe("The id of a precedent from the list"),
     point: z.string().describe("What the project does better, worse or differently than the precedent, in its picture and in what its jury praised or faulted, read through your concepts"),
   })).default([]).describe("Up to two, only when precedents are given"),
+  moves: z.array(MoveSchema).default([]).describe("Up to three massing moves"),
 });
 
 const Replies = z.object({
@@ -91,9 +94,9 @@ const QuestionsAnswer = z.object({
 type Reason = z.infer<typeof Reading>;
 export type Reply = z.infer<typeof Replies>["replies"][number];
 export type Comparison = z.infer<typeof JurorAnswer>["comparisons"][number];
-export type JurorResult = Omit<z.infer<typeof JurorAnswer>, "reasons" | "comparisons"> & { juror: string; reasons: Reason[]; comparisons: Comparison[]; replies: Reply[]; passages: Hit[]; dropped: number };
+export type JurorResult = Omit<z.infer<typeof JurorAnswer>, "reasons" | "comparisons" | "moves"> & { juror: string; reasons: Reason[]; comparisons: Comparison[]; moves: Move[]; replies: Reply[]; passages: Hit[]; dropped: number };
 export type Chair = Omit<z.infer<typeof ChairAnswer>, "reading"> & { reading: (Hit & { why: string })[] };
-export type JuryResult = { jurors: JurorResult[]; chair: Chair | null; position?: string; precedents?: Shown[]; drawing?: Drawing };
+export type JuryResult = { jurors: JurorResult[]; chair: Chair | null; moves: JurorMove[]; position?: string; precedents?: Shown[]; drawing?: Drawing };
 export type Question = z.infer<typeof QuestionsAnswer>["questions"][number] & { where?: string; title?: string };
 
 export interface Answer { question: string; answer: string }
@@ -123,10 +126,11 @@ export function queries(p: ProjectSummary, pitch?: string): string[] {
 /** What the jury reads: the project, its programme and site context, and the architect's own words (the pitch, the answers) */
 export function brief(input: Pick<JuryInput, "project" | "pitch" | "answers" | "views" | "precedents">): string {
   const answers = (input.answers ?? []).filter(a => a.answer?.trim());
-  const { programme, context, ...project } = input.project ?? {};
+  const { programme, context, massing, ...project } = input.project ?? {};
   const views = input.views ?? [];
   return `PROJECT\n${JSON.stringify(project, null, 1)}` +
     (programme && Object.keys(programme).length ? `\n\nPROGRAMME (the rooms as the massing places them; groundFloor: the uses on the ground floor, largest first)\n${JSON.stringify(programme, null, 1)}` : "") +
+    (massing && Object.keys(massing).length ? `\n\nMASSING (the form as built now; north is up; each side with its facade length and storeys)\n${JSON.stringify(massing, null, 1)}` : "") +
     (context && Object.keys(context).length ? `\n\nSITE CONTEXT (measured from the edge of the plot; north is up in the views)\n${JSON.stringify(context, null, 1)}` : "") +
     (views.length ? `\n\nVIEWS OF THE MODEL (attached): ${views.map((v, i) => `${i + 1}. ${v.label}`).join("; ")}` : "") +
     (input.precedents?.length ? `\n\nPRECEDENTS (entries a real competition jury has judged; their pictures are attached after the views)\n` +
@@ -185,7 +189,7 @@ const stance = (input: JuryInput) => {
 
 async function judge(env: Env, juror: string, input: JuryInput): Promise<JurorResult> {
   const passages = await gather(env, juror, input);
-  const empty = { position: "", reasons: [], comparisons: [], replies: [], passages, dropped: 0 };
+  const empty = { position: "", reasons: [], comparisons: [], moves: [], replies: [], passages, dropped: 0 };
   if (passages.length === 0)
     return { juror, verdict: "approve with changes", summary: `There is nothing by ${juror} in the library to judge from.`, ...empty };
 
@@ -197,7 +201,7 @@ async function judge(env: Env, juror: string, input: JuryInput): Promise<JurorRe
       "This is a discussion of ideas, not a score. State your position. Then name 2-5 concepts from your work and read the project",
       "through each: where it embodies the idea (praise) and where it misses or contradicts it (concern). Ground each in one passage id.",
       "Where a passage names a built work as an example of the idea, give it as the precedent with that passage id; never invent one.",
-      "Take the architect's own words seriously: judge the project against what they say they want, too.", LOOK, COMPARE,
+      "Take the architect's own words seriously: judge the project against what they say they want, too.", LOOK, COMPARE, PROPOSE,
       `Still give an overall verdict. Write in ${language(input.lang)}.`,
     ].join(" ") },
     { role: "user", content: withViews(`${brief(input)}\n\nPASSAGES\n` + passages.map(h => forModel(h, h.text)).join("\n\n"), input.views, input.precedents) },
@@ -206,7 +210,8 @@ async function judge(env: Env, juror: string, input: JuryInput): Promise<JurorRe
   const known = (id: string) => passages.some(h => h.chunkId === id);
   const reasons = grounded(out.reasons, known).slice(0, 5);
   const comparisons = out.comparisons.filter(c => input.precedents?.some(p => p.id === c.precedent)).slice(0, 2);
-  return { juror, ...out, reasons, comparisons, replies: [], passages, dropped: out.reasons.length - reasons.length };
+  const moves = cleanMoves(out.moves, known);
+  return { juror, ...out, reasons, comparisons, moves, replies: [], passages, dropped: out.reasons.length - reasons.length };
 }
 
 /** The second round: a juror reads the others' readings and answers up to three of them, from their own passages */
@@ -260,6 +265,7 @@ export function transcript(jurors: JurorResult[]): string {
     `${j.juror}: ${j.position} Verdict: ${j.verdict}. ${j.summary}`,
     ...j.reasons.map(r => `- [${r.stance}] ${r.concept}: ${r.point}${r.precedent ? ` (precedent: ${r.precedent.building})` : ""}`),
     ...(j.comparisons ?? []).map(c => `- compared with [${c.precedent}]: ${c.point}`),
+    ...(j.moves ?? []).map(m => `- proposes: ${m.title} (${m.concept}): ${m.why}`),
     ...j.replies.map(r => `- replies to ${r.to} (${r.response}, ${r.concept}): ${r.point}`),
   ].join("\n")).join("\n\n");
 }
@@ -282,6 +288,7 @@ export function juryGraph(env: Env) {
         { role: "system", content: [
           "You chair a theoretical architecture crit. Do not average the jurors into one opinion. Set out the common ground,",
           "then the tensions: the real theoretical questions on which their positions pull apart, each side in the juror's terms, left open.",
+          "Weigh the massing moves the jurors propose: where they pull in different directions, that is a tension.",
           "Then the questions the crit leaves the architect, what to explore next, and up to four passages from the list to read next,",
           "with why each would take the architect's thinking further. Add nothing the jurors did not say. Also give an overall verdict.",
           "Where the brief gives the programme, the site context or views, check what the jurors say against them.",
@@ -306,13 +313,13 @@ export async function jury(env: Env, input: JuryInput): Promise<JuryResult> {
   const out = await juryGraph(env).invoke({ input }, { runName: "keystone-jury", tags: ["jury"] });
   // the user is shown the passages a juror cited: for a reading, a precedent or a reply
   const jurors = out.jurors.map(j => {
-    const cited = new Set([...j.reasons.flatMap(r => [r.passage, r.precedent?.passage]), ...j.replies.map(r => r.passage)]);
+    const cited = new Set([...j.reasons.flatMap(r => [r.passage, r.precedent?.passage]), ...j.replies.map(r => r.passage), ...j.moves.map(m => m.passage)]);
     return { ...j, passages: j.passages.filter(h => cited.has(h.chunkId)) };
   });
   // the precedents a juror compared the project with are shown with their picture
   const used = new Set(jurors.flatMap(j => j.comparisons.map(c => c.precedent)));
   const shown = precedents.filter(p => used.has(p.id));
-  return { jurors, chair: out.chair ?? null, ...(input.position ? { position: input.position } : {}), ...(shown.length ? { precedents: shown } : {}),
+  return { jurors, chair: out.chair ?? null, moves: allMoves(jurors), ...(input.position ? { position: input.position } : {}), ...(shown.length ? { precedents: shown } : {}),
     ...(out.drawing ? { drawing: out.drawing } : {}) };
 }
 
