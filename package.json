@@ -12,6 +12,7 @@
     "ingest:youtube": "tsx ingest/youtube.ts",
     "ingest:book": "tsx ingest/book.ts",
     "ingest:library": "tsx ingest/library.ts",
+    "ingest:precedents": "tsx ingest/precedents.ts",
     "eval:generate": "tsx eval/generate.ts",
     "eval": "tsx eval/run.ts"
   },
@@ -37,6 +38,7 @@
     "@types/node": "^26.6.6",
     "langsmith": "^0.11.8",
     "pdfjs-dist": "^6.5.438",
+    "sharp": "^0.35.5",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.1.0",

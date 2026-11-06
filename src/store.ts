@@ -24,21 +24,29 @@ export const chunkId = (sourceId: string, index: number) => `${sourceId}:${index
 
 /** Embeds and stores a source's chunks (ids `<source>:<n>`, so ingesting a source again replaces it) and records the source. */
 export async function ingest(env: Env, source: Source, chunks: Chunk[]): Promise<number> {
-  const docs = chunks.map((c, index) => new Document<ChunkMeta>({
-    pageContent: c.text,
-    metadata: strip({ text: c.text, sourceId: source.id, kind: source.kind, author: source.author, title: source.title, index,
-      start: c.start, end: c.end, page: c.page, url: source.url, country: source.country ?? "*", typology: source.typology ?? "*",
-      private: source.private ? true : undefined }),
-  }));
-  const s = store(env, !!source.private);
-  for (let i = 0; i < docs.length; i += 50)
-    await s.addDocuments(docs.slice(i, i + 50), { ids: docs.slice(i, i + 50).map(d => chunkId(source.id, d.metadata.index)) });
+  const n = await addChunks(env, { sourceId: source.id, kind: source.kind, author: source.author, title: source.title, url: source.url,
+    country: source.country, typology: source.typology, private: source.private }, chunks);
   await env.DB.prepare(`INSERT INTO sources (id, kind, title, author, url, language, year, country, typology, summary, chunks, private)
       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
       ON CONFLICT(id) DO UPDATE SET kind = ?2, title = ?3, author = ?4, url = ?5, language = ?6, year = ?7, country = ?8,
         typology = ?9, summary = ?10, chunks = ?11, private = ?12, updated_at = CURRENT_TIMESTAMP`)
     .bind(source.id, source.kind, source.title, source.author, source.url ?? null, source.language ?? null, source.year ?? null,
-      source.country ?? "*", source.typology ?? "*", source.summary ?? null, docs.length, source.private ? 1 : 0).run();
+      source.country ?? "*", source.typology ?? "*", source.summary ?? null, n, source.private ? 1 : 0).run();
+  return n;
+}
+
+type ChunkBase = Pick<ChunkMeta, "sourceId" | "kind" | "author" | "title" | "url" | "country" | "typology" | "private">;
+
+/** Embeds chunks into the public index, or the owner-only one for a private source; ids `<source>:<n>`, so a second run replaces them */
+export async function addChunks(env: Env, base: ChunkBase, chunks: Chunk[]): Promise<number> {
+  const docs = chunks.map((c, index) => new Document<ChunkMeta>({
+    pageContent: c.text,
+    metadata: strip({ ...base, text: c.text, index, start: c.start, end: c.end, page: c.page, country: base.country ?? "*",
+      typology: base.typology ?? "*", private: base.private ? true : undefined }),
+  }));
+  const s = store(env, !!base.private);
+  for (let i = 0; i < docs.length; i += 50)
+    await s.addDocuments(docs.slice(i, i + 50), { ids: docs.slice(i, i + 50).map(d => chunkId(base.sourceId, d.metadata.index)) });
   return docs.length;
 }
 

@@ -3,9 +3,9 @@ import type { ChunkMeta } from "./types";
 
 export interface Citation { chunkId: string; sourceId: string; kind: string; author: string; title: string; where: string; url?: string; quote: string; private?: boolean }
 
-/** "12:34" for a video, "p. 56" for a book: the same text goes into a fact's evidence as `where` */
+/** "12:34" for a video, "p. 56" for a book, "jury's assessment" for a precedent: the same text goes into a fact's evidence as `where` */
 export function where(m: Pick<ChunkMeta, "kind" | "start" | "page">): string {
-  return m.kind === "video" ? timestamp(m.start ?? 0) : `p. ${m.page ?? "?"}`;
+  return m.kind === "video" ? timestamp(m.start ?? 0) : m.kind === "precedent" ? "jury's assessment" : `p. ${m.page ?? "?"}`;
 }
 
 export function citation(chunkId: string, m: ChunkMeta, quoteChars = 280): Citation {

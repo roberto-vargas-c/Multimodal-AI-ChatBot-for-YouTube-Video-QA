@@ -1,0 +1,23 @@
+{
+  "_comment": "Copy to precedents.json (git-ignored) and run npm run ingest:precedents. Paths are relative to this file. Use only pictures and texts you are allowed to use, and name each precedent by a neutral label, never by its office.",
+  "precedents": [
+    {
+      "id": "hospital-2024-1",
+      "title": "Hospital, 1st prize, 2024",
+      "typology": "health", "country": "DE", "year": 2024, "prize": "1st prize", "lang": "de",
+      "juryFile": "texts/hospital-2024-1.txt",
+      "images": [
+        { "file": "boards/hospital-2024-1-board-1.jpg", "label": "Perspective from the entrance square", "crop": [0.0, 0.0, 0.6, 0.45] },
+        { "file": "boards/hospital-2024-1-board-2.jpg", "label": "Site plan" }
+      ]
+    },
+    {
+      "id": "school-2025-2",
+      "title": "Primary school, 2nd prize, 2025",
+      "typology": "school", "country": "DE", "year": 2025, "prize": "2nd prize", "lang": "de",
+      "jury": "Die Arbeit überzeugt durch die klare Setzung des Baukörpers an der Straße … (the jury's assessment, as published)",
+      "images": [{ "file": "photos/school-2025-2-lead.jpg", "label": "Lead image: view from the schoolyard" }],
+      "private": true
+    }
+  ]
+}

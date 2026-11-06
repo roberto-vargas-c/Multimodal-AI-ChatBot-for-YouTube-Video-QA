@@ -1,4 +1,4 @@
-// Ingests everything listed in a library file (see library.example.json), one source after the other.
+// Ingests everything listed in a library file (see library.example.json), one source after the other, then its precedents.
 import { readFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -8,12 +8,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const flags = (o: Record<string, unknown>) => Object.entries(o).filter(([k, v]) => !k.startsWith("_") && v !== false).flatMap(([k, v]) => v === true ? [`--${k}`] : [`--${k}`, String(v)]);
 
 const file = process.argv[2] ?? "ingest/library.json";
-const lib = JSON.parse(await readFile(file, "utf8")) as { videos?: Record<string, unknown>[]; books?: Record<string, unknown>[] };
+const lib = JSON.parse(await readFile(file, "utf8")) as { videos?: Record<string, unknown>[]; books?: Record<string, unknown>[]; precedents?: unknown[] };
 let failed = 0;
 for (const [script, items] of [["youtube.ts", lib.videos ?? []], ["book.ts", lib.books ?? []]] as const)
   for (const item of items) {
     const r = spawnSync(process.execPath, ["--import", "tsx", join(here, script), ...flags(item)], { stdio: "inherit" });
     if (r.status !== 0) failed++;
   }
+// precedents (pictures with a jury's assessment) listed in the same file go in through precedents.ts
+if (lib.precedents?.length && spawnSync(process.execPath, ["--import", "tsx", join(here, "precedents.ts"), file], { stdio: "inherit" }).status !== 0) failed++;
 console.log(failed ? `${failed} source(s) failed` : "All sources ingested");
 process.exit(failed ? 1 : 0);
