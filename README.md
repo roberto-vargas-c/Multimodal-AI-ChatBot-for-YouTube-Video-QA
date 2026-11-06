@@ -138,7 +138,7 @@ Hand-written questions in the same format (`eval/dataset.example.jsonl`) can be 
 | `POST /api/chunks` | `Bearer INGEST_TOKEN`; `{ ids: ["<source>:<n>"] }`, for the question generator |
 | `POST /api/ingest` | `Bearer INGEST_TOKEN`; `{ source, segments \| pages \| chunks }` |
 
-Limits: `AI_PER_DAY` paid model calls per day for the whole Worker (default 300), 6 model calls per question, 20 MB per recording.
+Limits: `AI_PER_DAY` paid model calls per day for the whole Worker (default 300; a question counts each of its up to 6 model calls, and a recording counts one), 5 MB per recording, and 20 POSTs per minute from one visitor (the `LIMITER` rate limiting binding; Keystone names each visitor when it holds `KEYSTONE_BOT_TOKEN`).
 
 ## Notes
 

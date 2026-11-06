@@ -5,6 +5,7 @@ export interface Env {
   VECTORIZE: VectorizeIndex;
   VECTORIZE_PRIVATE?: VectorizeIndex;   // owner-only index (copyrighted books): only queried for owner requests
   DB: D1Database;
+  LIMITER?: { limit(o: { key: string }): Promise<{ success: boolean }> };   // Workers rate limiting binding (wrangler.jsonc ratelimits)
   ANTHROPIC_API_KEY: string;
   CHAT_MODEL?: string;             // default claude-haiku-5-5
   EMBEDDING_MODEL?: string;        // default @cf/baai/bge-m3 (multilingual, 1024 dimensions)
