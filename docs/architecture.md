@@ -19,7 +19,8 @@
    answering with structured output (zod); invented passage ids are dropped; then the chair merges the verdicts.
 6. **Routing** (`src/router.ts`). `/api/chat` sends questions to the agent and requests to judge a design to the jury: keywords first
    (English and German), a one-token model call only when unclear.
-7. **Voice** (`src/speech.ts`). The browser records with MediaRecorder; Whisper large-v3-turbo on Workers AI transcribes.
+7. **Voice** (`src/speech.ts`). The browser records with MediaRecorder; Whisper large-v3-turbo on Workers AI transcribes. Speech
+   recognition is only where there is speech: the user's voice, and videos without captions. Books are text and skip it.
 8. **Knowledge base** (`src/facts.ts`). `propose_fact` writes a rule for one of Keystone's 50 questions in 12 categories, with the
    passage as evidence. Same answer from another source adds evidence; a different answer marks both as disagreeing. Keystone reads
    `/api/facts` every 5 minutes and merges it over its own files.
@@ -35,6 +36,8 @@
 | bge-m3 | Multilingual: the library mixes German and English |
 | Claude Haiku 5.5 | Fast and cheap enough for a live app with a jury of three; Keystone already uses it |
 | No fine-tuning | Retrieval with citations answers from the sources; evaluation compares retrieval settings instead |
+| Whisper for videos, not for books | Whisper turns audio into text; a book is already text, so it is read from the PDF's text layer (OCR for scans). Videos with captions use them; Whisper fills in where there are none, and for the user's voice. See the README |
+| A daily cap on paid model calls (`AI_PER_DAY`) | Bounds the cost of a public app; checked before work starts, so a crit runs whole or is refused with a message saying when it opens again; raised for a demo day by redeploying with a higher value |
 | Timestamp windows with overlap | A citation must point to a real second of the video; overlap keeps sentences on a boundary findable |
 | Facts under review until a second source | One lecture should not change how Keystone designs |
 

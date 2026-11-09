@@ -6,7 +6,7 @@ import { jury, questions, views, type Answer } from "./jury";
 import { inLibrary, positionsOf, position } from "./positions";
 import { route } from "./router";
 import { MAX_AUDIO, transcribe } from "./speech";
-import { allow } from "./llm";
+import { spend, usage, limitMessage, type Budget } from "./llm";
 import { ingest, sources, authors } from "./store";
 import { forKeystone } from "./facts";
 import { images, ingestPrecedent, listPrecedents, precedent } from "./precedents";
@@ -34,6 +34,7 @@ export default {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       console.error(message);
+      if (e instanceof LimitError) return json({ error: message, limit: e.budget }, 429, { ...cors, "retry-after": String(e.retryAfter) });
       return json({ error: message }, e instanceof HttpError ? e.status : 500, cors);
     } finally {
       ctx.waitUntil(awaitAllCallbacks());       // let the LangSmith traces finish after the response
@@ -44,7 +45,8 @@ export default {
 async function handle(request: Request, url: URL, env: Env): Promise<Response> {
   const path = url.pathname, method = request.method;
 
-  if (path === "/api/health") return json({ ok: true, model: env.CHAT_MODEL ?? "claude-haiku-5-5", tracing: env.LANGSMITH_TRACING === "true" });
+  // also how much of today's model budget is left: worth a look before a live demo
+  if (path === "/api/health") return json({ ok: true, model: env.CHAT_MODEL ?? "claude-haiku-5-5", tracing: env.LANGSMITH_TRACING === "true", budget: await usage(env) });
   const owner = isOwner(request, env);
   if (path === "/api/sources" && method === "GET") return json({ sources: await sources(env, owner) });
   if (path === "/api/authors" && method === "GET") {
@@ -57,15 +59,16 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
   if (path === "/api/transcribe" && method === "POST") {
     const audio = await request.arrayBuffer();
     if (audio.byteLength > MAX_AUDIO) throw new HttpError(413, "Recording too long: at most 5 MB");
-    await budget(env);
+    await budget(env, 1, owner, url.searchParams.get("lang") ?? undefined);
     return json(await transcribe(env, audio, url.searchParams.get("lang") ?? undefined));
   }
 
   if (path === "/api/ask" && method === "POST") {
     const b = await body(request);
-    await budget(env);
+    await budget(env, 1, owner, str(b.lang));
     const a = await ask(env, { ...askInput(b), owner });
-    await allow(env, a.calls - 1);              // the agent's further model calls count too (up to RUN_LIMIT per question)
+    // the agent's further model calls count too (up to RUN_LIMIT per question); counted, not refused: the answer is already paid for
+    if (a.calls > 1) await spend(env, a.calls - 1, true);
     return json({ route: "ask", ...a });
   }
 
@@ -79,8 +82,8 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
     const answers = Array.isArray(b.answers) ? (b.answers as Json[]).slice(0, 8).map(a => ({ question: String(a.question ?? ""), answer: String(a.answer ?? "") })) as Answer[] : undefined;
     const input = { jurors, project: (b.project ?? {}) as ProjectSummary, pitch: str(b.pitch), lang: str(b.lang), owner, position: school?.id, answers, views: views(b.views) };
     // first the jury asks the architect about their intentions; then the crit, with the answers
-    if (str(b.stage) === "questions") { await budget(env); return json({ route: "jury", jurors, questions: await questions(env, input) }); }
-    await budget(env, jurors.length * 2 + 1 + (input.views ? 1 : 0));    // + the image critic when there are views
+    if (str(b.stage) === "questions") { await budget(env, 1, owner, input.lang); return json({ route: "jury", jurors, questions: await questions(env, input) }); }
+    await budget(env, jurors.length * 2 + 1 + (input.views ? 1 : 0), owner, input.lang);    // + the image critic when there are views
     return json({ route: "jury", ...(await jury(env, input)) });
   }
 
@@ -89,10 +92,10 @@ async function handle(request: Request, url: URL, env: Env): Promise<Response> {
     const b = await body(request);
     const message = str(b.message) ?? "";
     const mode = (str(b.mode) ?? "auto") as "auto" | "ask" | "jury";
-    await budget(env);
+    await budget(env, 1, owner, str(b.lang));
     const r = mode === "auto" ? await route(env, message) : mode;
     if (r === "jury" && Array.isArray(b.jurors) && b.jurors.length) {
-      await budget(env, b.jurors.length * 2 + 1);
+      await budget(env, b.jurors.length * 2 + 1, owner, str(b.lang));
       return json({ route: "jury", ...(await jury(env, { jurors: (b.jurors as unknown[]).map(String).slice(0, 5),
         project: (b.project ?? {}) as ProjectSummary, pitch: message, lang: str(b.lang), owner })) });
     }
@@ -141,8 +144,10 @@ function askInput(b: Json) {
     lang: str(b.lang), allowWrites: b.allowWrites !== false };
 }
 
-async function budget(env: Env, calls = 1) {
-  if (!(await allow(env, calls))) throw new HttpError(429, "The assistant has reached today's limit. Please try again tomorrow.");
+/** Checked before any paid work starts, so a crit is never cut off halfway: it runs whole or is refused with a clear message */
+async function budget(env: Env, calls = 1, owner = false, lang?: string) {
+  const b = await spend(env, calls, owner);
+  if (!b.ok) throw new LimitError(b, lang);
 }
 
 /** Who a request counts against for the per-minute limit: Keystone forwards every visitor from its own address, so with the bot
@@ -165,6 +170,16 @@ function authorize(request: Request, env: Env) {
 }
 
 class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
+
+class LimitError extends HttpError {
+  budget: Omit<Budget, "ok">;
+  retryAfter: number;
+  constructor(b: Budget, lang?: string) {
+    super(429, limitMessage(b, lang));
+    this.budget = { used: b.used, cap: b.cap, resetsAt: b.resetsAt };
+    this.retryAfter = Math.max(60, Math.ceil((Date.parse(b.resetsAt) - Date.now()) / 1000));
+  }
+}
 
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
 
