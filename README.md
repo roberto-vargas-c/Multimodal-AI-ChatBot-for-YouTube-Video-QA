@@ -10,7 +10,7 @@ Keystone project only from their own words, through their own concepts. They deb
 
 | | |
 |---|---|
-| **Live** | Inside Keystone: **Project › Jury**. Keystone passes the panel's requests to this Worker, which has no page of its own |
+| **Live** | **[keystone.robert-en-var.workers.dev/app#/project/jury](https://keystone.robert-en-var.workers.dev/app#/project/jury)**: public, no sign-in. The front end is Keystone's **Project › Jury** tab (deployed from Keystone's `main`); this Worker is its API and has no page of its own (its address redirects to the tab) |
 | **Stack** | LangChain.js + LangGraph.js · Claude Haiku 5.5 · Cloudflare Workers, Vectorize, Workers AI (Whisper, bge-m3), D1 · LangSmith |
 | **Code** | `src/` the Worker · `ingest/` the library builder · `eval/` the LangSmith evaluation · `tests/` |
 
@@ -19,7 +19,7 @@ Keystone project only from their own words, through their own concepts. They deb
 | Brief | Here |
 |---|---|
 | 1. Text QA with pre-trained language models | Claude Haiku 5.5 answers from retrieved passages only, citing each one (`src/agent.ts`) |
-| 2. Speech recognition | Whisper large-v3-turbo on Workers AI: spoken questions and pitches (`/api/transcribe`), and videos without captions at ingestion |
+| 2. Speech recognition | Whisper large-v3-turbo on Workers AI: every spoken question and pitch (`/api/transcribe`), and at ingestion every video without usable captions. Books have no audio, so they skip it (see [Why books skip speech recognition](#why-books-skip-speech-recognition)) |
 | 3. Conversational interface, text or voice | Keystone's Jury panel, with a microphone button; one memory per conversation |
 | 4. YouTube content into a vector database | Captions (or Whisper) → cleaned → 60 s windows with 15 s overlap → bge-m3 embeddings → Cloudflare Vectorize, with author, kind, building type, country |
 | 5. Testing and evaluation | 19 unit tests (`npm test`) and a LangSmith evaluation of the live app: correctness (LLM judge), retrieval hit, citations, refusals, latency (`eval/run.ts`), on questions it writes itself from the library (`eval/generate.ts`) |
@@ -108,6 +108,25 @@ Its confidence is Keystone's: 1 - Π(1 - weight) over distinct sources, a video 
 disagree; from 0.5 it applies. So one video or book never changes Keystone's designs alone: it waits under Needs review until a second
 source or a curator confirms it.
 
+## Why books skip speech recognition
+
+Speech recognition turns audio into text. A book already *is* text, so there is nothing for Whisper to hear, and the two kinds of
+source take the shortest path to the same place: timed or paged text chunks in Vectorize.
+
+| | Video | Book (PDF) |
+|---|---|---|
+| What comes in | Audio (the lecture) | A text layer per page |
+| How it becomes text | YouTube's captions when they exist; otherwise Whisper on the audio (`--audio`) | `pdfjs-dist` reads the page text directly; a scan without a text layer gets OCR first (`ocrmypdf`) |
+| What a citation points to | A second of the video (captions and Whisper both give timestamps) | A printed page |
+| Chunking | 60 s windows, 15 s overlap, never splitting a caption | Up to 1,200 characters, cut at sentences, never across pages |
+
+Running books through speech recognition would mean synthesising speech from the text (text-to-speech) and transcribing it back:
+slower, costlier, and strictly worse, since every pass adds errors to names, numbers and technical terms, and the page numbers the
+citations need would be lost. For the same reason a video with good captions does not go through Whisper again: the captions are
+already a transcript with timestamps, often made or corrected by the publisher. Whisper is used where it adds something: videos with
+no captions, and the architect's own voice in the panel. The right tool for a book that is only an image is OCR, which plays for
+scans the role Whisper plays for audio.
+
 ## Run it
 
 ```bash
@@ -173,6 +192,21 @@ Hand-written questions in the same format (`eval/dataset.example.jsonl`) can be 
 | `POST /api/ingest` | `Bearer INGEST_TOKEN`; `{ source, segments \| pages \| chunks }` |
 
 Limits: `AI_PER_DAY` paid model calls per day for the whole Worker (default 300; a question counts each of its up to 6 model calls, and a recording counts one), 5 MB per recording, and 20 POSTs per minute from one visitor (the `LIMITER` rate limiting binding; Keystone names each visitor when it holds `KEYSTONE_BOT_TOKEN`).
+
+**The daily limit and live demos.** `AI_PER_DAY` is a cost guard on the paid model (Claude), counted in D1 per UTC day. A question
+counts 1, a crit with three jurors 7 (2 per juror and the chair), the jury's opening questions 1, so 300 is about 40 crits or
+300 questions. Speech recognition and search run on Workers AI and are not counted.
+
+- *What the user sees when it is reached:* the request is refused before any work starts, so a crit never stops halfway. The panel
+  shows "The jury has used today's 300 model calls. This is a cost limit, not a fault: the library and the rest of Keystone keep
+  working. It opens again at 00:00 UTC (in 3 h 12 min)" (in German when Keystone is in German). The response is a 429 with a
+  `Retry-After` header and `limit: { used, cap, resetsAt }`. Refused requests are not counted, so they do not use up what is left.
+- *Check before presenting:* `GET /api/health` (through Keystone: `https://keystone.robert-en-var.workers.dev/api/jury/health`)
+  returns `budget: { used, cap, resetsAt }`.
+- *Raise it for a demo day:* in GitHub, **Actions › Deploy › Run workflow**, with `ai_per_day` set (say 2000). That redeploys with
+  the higher cap; the next push to `main` sets it back to the value in `wrangler.jsonc`. From a laptop: `npx wrangler deploy --var AI_PER_DAY:2000`.
+- *The owner is never refused:* requests with `OWNER_TOKEN` (curators in Keystone, when `KEYSTONE_JURY_OWNER_TOKEN` is set there)
+  are counted but not capped, so a presenter signed in as curator cannot hit the limit mid-presentation.
 
 ## Notes
 

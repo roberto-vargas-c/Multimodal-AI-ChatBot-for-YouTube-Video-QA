@@ -27,7 +27,8 @@ if [ -z "$DB" ]; then echo "Creating the D1 database"; $W d1 create "$NAME" >/de
 sed -i.bak "s/\"database_id\": \"[^\"]*\"/\"database_id\": \"$DB\"/" wrangler.jsonc && rm -f wrangler.jsonc.bak
 $W d1 migrations apply "$NAME" --remote
 
-$W deploy
+# AI_PER_DAY in the environment overrides the daily cap in wrangler.jsonc for this deploy (e.g. a demo day)
+if [ -n "${AI_PER_DAY:-}" ]; then echo "Daily cap on paid model calls: $AI_PER_DAY"; $W deploy --var "AI_PER_DAY:$AI_PER_DAY"; else $W deploy; fi
 
 # the secrets that are set in this environment, all in one call
 node -e '
