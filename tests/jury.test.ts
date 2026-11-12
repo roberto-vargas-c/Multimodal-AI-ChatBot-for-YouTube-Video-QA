@@ -169,6 +169,18 @@ describe("positions", () => {
     expect(got.some(p => p.id === "structuralism")).toBe(false);
     expect(positionsOf("Colin Rowe")).toEqual(["typology", "postmodern"]);
   });
+
+  it("gives every Pritzker laureate in the library a school, seated in the position's order", () => {
+    const laureates = ["Alejandro Aravena", "Arata Isozaki", "Balkrishna Doshi", "Christian de Portzamparc", "David Chipperfield",
+      "Eduardo Souto de Moura", "Francis Kéré", "Frank Gehry", "Frei Otto", "Fumihiko Maki", "Glenn Murcutt", "Grafton Architects",
+      "Jacques Herzog", "Jean Nouvel", "Lacaton & Vassal", "Liu Jiakun", "Norman Foster", "Paulo Mendes da Rocha", "Peter Zumthor",
+      "RCR Arquitectes", "Rafael Moneo", "Rem Koolhaas", "Renzo Piano", "Richard Rogers", "Riken Yamamoto", "SANAA", "Shigeru Ban",
+      "Smiljan Radić", "Tadao Ando", "Thom Mayne", "Toyo Ito", "Wang Shu", "Zaha Hadid", "Álvaro Siza"];
+    for (const a of laureates) expect(positionsOf(a), a).toHaveLength(1);
+    // the library lists authors alphabetically; a position seats the ones it names first
+    expect(inLibrary(laureates).find(p => p.id === "social")?.authors.slice(0, 3)).toEqual(["Lacaton & Vassal", "Alejandro Aravena", "Balkrishna Doshi"]);
+    expect(inLibrary([...laureates, "Peter Zumthor"]).find(p => p.id === "phenomenology")?.authors).toEqual(["Peter Zumthor", "Tadao Ando", "Álvaro Siza", "RCR Arquitectes"]);
+  });
 });
 
 describe("answers the model cuts short", () => {
