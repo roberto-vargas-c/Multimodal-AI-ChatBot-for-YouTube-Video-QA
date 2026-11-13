@@ -15,7 +15,7 @@ import { search, type Hit } from "./store";
 import { forModel } from "./citations";
 import { position as findPosition } from "./positions";
 import { findPrecedents, forModel as precedentText, type Shown } from "./precedents";
-import { allMoves, cleanMoves, MoveSchema, PROPOSE, type JurorMove, type Move } from "./moves";
+import { allMoves, cleanMoves, cleanWhere, MoveSchema, PLACE, PROPOSE, WhereSchema, type JurorMove, type Move } from "./moves";
 import type { Env, ProjectSummary, View } from "./types";
 
 const Verdict = z.enum(["approve", "approve with changes", "reject"]).default("approve with changes");
@@ -29,6 +29,7 @@ const Reading = z.object({
     building: z.string().describe("A built work the author uses for this idea, as the passage names it"),
     passage: z.string().describe("The id of the passage that names it"),
   }).optional().describe("Only when a passage names a built example of the idea"),
+  where: WhereSchema.describe("The part of the building the point is about, only when it is about one part"),
 });
 
 export const JurorAnswer = z.object({
@@ -60,6 +61,7 @@ export const ChairAnswer = z.object({
   tensions: z.array(z.object({
     question: z.string().describe("The theoretical question at stake, e.g. 'Should the courtyard belong to the school or to the city?'"),
     sides: z.array(z.object({ juror: z.string(), view: z.string() })).default([]),
+    where: WhereSchema.describe("The part of the building the tension is about, when the jurors' readings and moves place it there"),
   })).default([]).describe("Up to three: the real disagreements between positions, left open, not resolved"),
   questions: z.array(z.string()).default([]).describe("Up to three questions the crit leaves the architect to answer in the design"),
   next: z.array(z.string()).default([]).describe("Up to four things to explore in the design next"),
@@ -201,14 +203,14 @@ async function judge(env: Env, juror: string, input: JuryInput): Promise<JurorRe
       "This is a discussion of ideas, not a score. State your position. Then name 2-5 concepts from your work and read the project",
       "through each: where it embodies the idea (praise) and where it misses or contradicts it (concern). Ground each in one passage id.",
       "Where a passage names a built work as an example of the idea, give it as the precedent with that passage id; never invent one.",
-      "Take the architect's own words seriously: judge the project against what they say they want, too.", LOOK, COMPARE, PROPOSE,
+      "Take the architect's own words seriously: judge the project against what they say they want, too.", LOOK, COMPARE, PLACE, PROPOSE,
       `Still give an overall verdict. Write in ${language(input.lang)}.`,
     ].join(" ") },
     { role: "user", content: withViews(`${brief(input)}\n\nPASSAGES\n` + passages.map(h => forModel(h, h.text)).join("\n\n"), input.views, input.precedents) },
   ], { runName: `juror: ${juror}`, tags: ["jury", "juror"] }));
   // a reason that cites a passage the juror was not given is dropped, so every point the user sees is grounded
   const known = (id: string) => passages.some(h => h.chunkId === id);
-  const reasons = grounded(out.reasons, known).slice(0, 5);
+  const reasons = grounded(out.reasons, known).slice(0, 5).map(r => ({ ...r, where: cleanWhere(r.where) }));
   const comparisons = out.comparisons.filter(c => input.precedents?.some(p => p.id === c.precedent)).slice(0, 2);
   const moves = cleanMoves(out.moves, known);
   return { juror, ...out, reasons, comparisons, moves, replies: [], passages, dropped: out.reasons.length - reasons.length };
@@ -259,13 +261,16 @@ const State = Annotation.Root({
   chair: Annotation<JuryResult["chair"]>(),
 });
 
+// where a point applies, as the chair reads it: " [north side, ground]"
+const place = (w?: { side?: string; range?: string }) => w?.side || w?.range ? ` [${[w.side && `${w.side} side`, w.range && w.range !== "all" ? `${w.range} floors` : ""].filter(Boolean).join(", ")}]` : "";
+
 /** What the chair reads: positions, readings and the debate, without the passages' text */
 export function transcript(jurors: JurorResult[]): string {
   return jurors.filter(j => j.reasons.length).map(j => [
     `${j.juror}: ${j.position} Verdict: ${j.verdict}. ${j.summary}`,
-    ...j.reasons.map(r => `- [${r.stance}] ${r.concept}: ${r.point}${r.precedent ? ` (precedent: ${r.precedent.building})` : ""}`),
+    ...j.reasons.map(r => `- [${r.stance}] ${r.concept}${place(r.where)}: ${r.point}${r.precedent ? ` (precedent: ${r.precedent.building})` : ""}`),
     ...(j.comparisons ?? []).map(c => `- compared with [${c.precedent}]: ${c.point}`),
-    ...(j.moves ?? []).map(m => `- proposes: ${m.title} (${m.concept}): ${m.why}`),
+    ...(j.moves ?? []).map(m => `- proposes: ${m.title} (${m.concept}${place(m)}): ${m.why}`),
     ...j.replies.map(r => `- replies to ${r.to} (${r.response}, ${r.concept}): ${r.point}`),
   ].join("\n")).join("\n\n");
 }
@@ -289,6 +294,7 @@ export function juryGraph(env: Env) {
           "You chair a theoretical architecture crit. Do not average the jurors into one opinion. Set out the common ground,",
           "then the tensions: the real theoretical questions on which their positions pull apart, each side in the juror's terms, left open.",
           "Weigh the massing moves the jurors propose: where they pull in different directions, that is a tension.",
+          "Where the readings and moves behind a tension are about one part of the building, say where it lies (side, floors).",
           "Then the questions the crit leaves the architect, what to explore next, and up to four passages from the list to read next,",
           "with why each would take the architect's thinking further. Add nothing the jurors did not say. Also give an overall verdict.",
           "Where the brief gives the programme, the site context or views, check what the jurors say against them.",
@@ -298,7 +304,7 @@ export function juryGraph(env: Env) {
           [...pool.values()].map(h => `[${h.chunkId}] ${h.author}, "${h.title}", ${h.where}: ${h.text.slice(0, 200)}`).join("\n"), s.input.views, s.input.precedents) },
       ], { runName: "chair", tags: ["jury", "chair"] }));
       const reading = out.reading.flatMap(r => { const h = pool.get(r.passage); return h ? [{ ...h, why: r.why }] : []; }).slice(0, 4);
-      return { chair: { ...out, tensions: out.tensions.filter(x => x.sides.length >= 2).slice(0, 3), questions: out.questions.slice(0, 3), next: out.next.slice(0, 4), reading } };
+      return { chair: { ...out, tensions: out.tensions.filter(x => x.sides.length >= 2).slice(0, 3).map(x => ({ ...x, where: cleanWhere(x.where) })), questions: out.questions.slice(0, 3), next: out.next.slice(0, 4), reading } };
     })
     .addEdge(START, "hear")
     .addConditionalEdges("hear", s => s.jurors.filter(j => j.reasons.length).length > 1 ? "debate" : "sum_up", ["debate", "sum_up"])

@@ -12,9 +12,9 @@ vi.mock("../src/llm", () => ({
         const id = me === "Jan Gehl" ? "gehl:1" : "rossi:1";
         if (name === "crit") return { position: `${me}'s position`, verdict: "approve with changes", summary: "s",
           reasons: [
-            { concept: "edges", stance: "praise", point: "p", passage: id, precedent: { building: "Strøget", passage: id } },
+            { concept: "edges", stance: "praise", point: "p", passage: id, precedent: { building: "Strøget", passage: id }, where: { side: "south", range: "ground" } },
             { concept: "invented", stance: "concern", point: "p", passage: "nowhere:9" },
-            { concept: "type", stance: "concern", point: "p", passage: id, precedent: { building: "made up", passage: "nowhere:1" } },
+            { concept: "type", stance: "concern", point: "p", passage: id, precedent: { building: "made up", passage: "nowhere:1" }, where: {} },
           ],
           comparisons: [{ precedent: "school-2025-2", point: "its yard opens to the street, this one turns away" }, { precedent: "made-up", point: "x" }],
           moves: [
@@ -27,7 +27,7 @@ vi.mock("../src/llm", () => ({
           { to: "Somebody else", concept: "x", response: "agree", point: "r", passage: id },
         ] };
         if (name === "chair") return { verdict: "approve with changes", agree: ["a"], disagree: ["d"], next: ["n"], questions: ["q"],
-          tensions: [{ question: "city or school?", sides: [{ juror: "Jan Gehl", view: "v" }, { juror: "Aldo Rossi", view: "w" }] }],
+          tensions: [{ question: "city or school?", sides: [{ juror: "Jan Gehl", view: "v" }, { juror: "Aldo Rossi", view: "w" }], where: { side: "south" } }],
           reading: [{ passage: "gehl:1", why: "w" }, { passage: "nowhere:2", why: "w" }] };
         if (name === "questions") return { questions: [{ juror: "Jan Gehl", question: "For whom is the courtyard?", passage: "gehl:1" },
           { juror: "Jan Gehl", question: "made up", passage: "nowhere:3" }] };
@@ -64,6 +64,13 @@ describe("the theoretical crit", () => {
     expect(gehl.passages.map(h => h.chunkId)).toEqual(["gehl:1"]);
     expect(r.chair?.tensions[0].sides).toHaveLength(2);
     expect(r.chair?.reading.map(h => h.chunkId)).toEqual(["gehl:1"]);      // reading only from passages the jurors had
+  });
+
+  it("keeps where a reading and a tension apply, for the pins on the model", async () => {
+    const { jury } = await import("../src/jury");
+    const r = await jury({} as never, { jurors: ["Jan Gehl", "Aldo Rossi"], project: { name: "School" } });
+    expect(r.jurors[0].reasons.map(x => x.where)).toEqual([{ side: "south", range: "ground" }, undefined]);   // an empty place is no place
+    expect(r.chair?.tensions[0].where).toEqual({ side: "south" });
   });
 
   it("returns the jurors' massing moves, grounded, once each, with who proposed them", async () => {
