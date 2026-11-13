@@ -25,6 +25,21 @@ export const MoveSchema = z.object({
   passage: z.string().describe("The id of the passage that grounds it, e.g. abc123:4"),
 });
 export type Move = z.infer<typeof MoveSchema>;
+
+/** Where on the building a reading or a tension applies, so Keystone can pin it to the model: the side (north up) and the floors.
+ *  Left out when the point is about the whole building or about nothing one can point at; a value Keystone cannot read is dropped. */
+export const WhereSchema = z.object({
+  side: z.enum(SIDES).optional().catch(undefined).describe("The side of the building the point is about, north up, as in the MASSING section; 'all' for every side"),
+  range: z.enum(FLOOR_RANGES).optional().catch(undefined).describe("The floors the point is about: ground, upper, top, or all"),
+}).optional().catch(undefined);
+export type Where = z.infer<typeof WhereSchema>;
+
+/** A place with nothing in it is no place */
+export const cleanWhere = (w: Where): Where => w && (w.side || w.range) ? Object.fromEntries(Object.entries(w).filter(([, v]) => v !== undefined)) as Where : undefined;
+
+// what the jurors and the chair are told about placing their points
+export const PLACE = "Where a reading is about one part of the building (a side, the ground floor, the top), say where: the side by compass" +
+  " direction from the MASSING section and the floors. Leave it out when the point is about the whole building or its idea.";
 export type JurorMove = Move & { juror: string };
 
 const clamp = (v: number | undefined, lo: number, hi: number) => v == null || !Number.isFinite(v) ? undefined : Math.max(lo, Math.min(hi, v));
